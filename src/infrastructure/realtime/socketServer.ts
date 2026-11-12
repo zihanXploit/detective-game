@@ -3,7 +3,10 @@ import { Server } from "socket.io";
 import { getEnv } from "@/infrastructure/config/env";
 import { buildRealtimeContainer } from "@/infrastructure/container";
 import { readCookie, SESSION_COOKIE, verifySessionToken } from "@/infrastructure/security/sessionToken";
-import { registerLobbyHandlers, type GameServer } from "./lobbyHandlers";
+import { KeyedSerialQueue } from "./KeyedSerialQueue";
+import { registerLobbyHandlers, type RealtimeServices } from "./lobbyHandlers";
+import { RoomGateway } from "./RoomGateway";
+import type { GameServer } from "./types";
 
 /**
  * Browsers attach cookies to cross-site WebSocket handshakes and CORS does not apply to them,
@@ -38,6 +41,11 @@ export function attachRealtime(httpServer: HttpServer): GameServer {
     next();
   });
 
-  io.on("connection", (socket) => registerLobbyHandlers(io, socket, deps));
+  const services: RealtimeServices = {
+    deps,
+    gateway: new RoomGateway(io, deps.presence, deps.getLobbyView),
+    queue: new KeyedSerialQueue(),
+  };
+  io.on("connection", (socket) => registerLobbyHandlers(socket, services));
   return io;
 }
