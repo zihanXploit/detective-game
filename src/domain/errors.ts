@@ -5,6 +5,11 @@ export type DomainErrorCode =
   | "ROOM_FULL"
   | "ROOM_NOT_JOINABLE"
   | "NOT_ROOM_MEMBER"
+  | "NOT_HOST"
+  | "ROOM_LOCKED"
+  | "ROOM_NOT_READY"
+  | "ROLE_TAKEN"
+  | "ROLE_REQUIRED"
   | "ROOM_CODE_TAKEN"
   | "ROOM_CODE_EXHAUSTED";
 
@@ -43,6 +48,14 @@ export const roomNotJoinable = () =>
   new DomainError("ROOM_NOT_JOINABLE", "This room is no longer accepting new players.");
 export const notRoomMember = () =>
   new DomainError("NOT_ROOM_MEMBER", "You are not a member of this room.");
+export const notHost = () => new DomainError("NOT_HOST", "Only the host can do that.");
+export const roomLocked = () =>
+  new DomainError("ROOM_LOCKED", "That can't be changed once the case has started.");
+export const roomNotReady = () =>
+  new DomainError("ROOM_NOT_READY", "Both detectives need a role and must be ready first.");
+export const roleTaken = () =>
+  new DomainError("ROLE_TAKEN", "Your partner already holds that role.");
+export const roleRequired = () => new DomainError("ROLE_REQUIRED", "Pick a role before readying up.");
 export const roomCodeTaken = () =>
   new DomainError("ROOM_CODE_TAKEN", "That room code is already in use.");
 export const roomCodeExhausted = () =>

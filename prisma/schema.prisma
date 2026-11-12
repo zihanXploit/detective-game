@@ -13,6 +13,12 @@ enum RoomStatus {
   COMPLETED
 }
 
+/// The two sides of a case. Each case gives them its own names and information.
+enum PlayerRole {
+  A
+  B
+}
+
 enum GameSessionStatus {
   ACTIVE
   COMPLETED
@@ -54,6 +60,9 @@ model RoomMember {
   playerId String   @db.Uuid
   /// 0 or 1. The unique (roomId, seat) constraint is what enforces the two-player cap under concurrent joins.
   seat     Int      @db.SmallInt
+  /// Which side of the case this player takes. Null until chosen in the lobby.
+  /// Unique per room; PostgreSQL lets several NULLs coexist, so unchosen players don't collide.
+  role     PlayerRole?
   isReady  Boolean  @default(false)
   joinedAt DateTime @default(now())
 
@@ -62,6 +71,7 @@ model RoomMember {
 
   @@id([roomId, playerId])
   @@unique([roomId, seat])
+  @@unique([roomId, role])
   @@index([playerId])
   @@map("room_members")
 }

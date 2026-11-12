@@ -15,7 +15,15 @@ export interface RoomRepository {
   findByCode(code: RoomCode): Promise<Room | null>;
   /** Throws ROOM_FULL if another player claimed the seat first. */
   addMember(roomId: string, member: RoomMember): Promise<void>;
-  setMemberReady(roomId: string, playerId: string, isReady: boolean): Promise<void>;
+  /** Persists a member's role and readiness. Throws ROLE_TAKEN if the partner claimed the role first. */
+  updateMember(roomId: string, member: RoomMember): Promise<void>;
+  /**
+   * Persists a departure from `room` (already applied in memory): removes the member and
+   * records the possibly new host, or deletes the room when nobody is left.
+   */
+  removeMember(room: Room, playerId: string): Promise<void>;
+  /** Moves the room out of the lobby. Returns false if it had already left it. */
+  markStarted(roomId: string): Promise<boolean>;
 }
 
 export interface RoomCodeGenerator {
