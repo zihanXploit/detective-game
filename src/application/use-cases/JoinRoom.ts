@@ -1,7 +1,6 @@
 import type { Clock, RoomRepository } from "@/application/ports";
-import { roomNotFound } from "@/domain/errors";
 import type { Room } from "@/domain/room/Room";
-import { parseRoomCode } from "@/domain/room/RoomCode";
+import { loadRoom } from "./loadRoom";
 
 export class JoinRoom {
   constructor(
@@ -10,8 +9,7 @@ export class JoinRoom {
   ) {}
 
   async execute(input: { code: string; playerId: string }): Promise<Room> {
-    const room = await this.rooms.findByCode(parseRoomCode(input.code));
-    if (!room) throw roomNotFound();
+    const room = await loadRoom(this.rooms, input.code);
 
     const { member, isNew } = room.admit(input.playerId, this.clock());
     // The in-memory check above can race with another joiner; the repository's

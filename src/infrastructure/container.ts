@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Clock, IdGenerator } from "@/application/ports";
 import { CheckRoomAccess } from "@/application/use-cases/CheckRoomAccess";
+import { ChooseRole } from "@/application/use-cases/ChooseRole";
 import { CreateRoom } from "@/application/use-cases/CreateRoom";
+import { LeaveRoom } from "@/application/use-cases/LeaveRoom";
+import { StartCase } from "@/application/use-cases/StartCase";
 import { GetLobbyView } from "@/application/use-cases/GetLobbyView";
 import { IdentifyPlayer } from "@/application/use-cases/IdentifyPlayer";
 import { JoinRoom } from "@/application/use-cases/JoinRoom";
@@ -52,7 +55,10 @@ export function buildRealtimeContainer() {
   return {
     presence,
     getLobbyView: new GetLobbyView(rooms, players, presence),
+    chooseRole: new ChooseRole(rooms),
     setReady: new SetReady(rooms),
+    startCase: new StartCase(rooms),
+    leaveRoom: new LeaveRoom(rooms),
   };
 }
 export type RealtimeContainer = ReturnType<typeof buildRealtimeContainer>;
