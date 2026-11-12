@@ -11,7 +11,8 @@ import type {
   ServerToClientEvents,
 } from "@/shared/realtime/contract";
 
-type LobbySocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+export type RoomSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+type LobbySocket = RoomSocket;
 
 export interface LobbyState {
   view: LobbyView | null;
@@ -27,10 +28,13 @@ const INITIAL: LobbyState = { view: null, connected: false, error: null, hasLeft
 export function useLobby(code: string) {
   const socketRef = useRef<LobbySocket | null>(null);
   const [state, setState] = useState<LobbyState>(INITIAL);
+  /** The room's one connection, shared with the game screen once the case starts. */
+  const [socket, setSocket] = useState<RoomSocket | null>(null);
 
   useEffect(() => {
     const socket: LobbySocket = io();
     socketRef.current = socket;
+    setSocket(socket);
     let lastSeq = 0;
 
     /** Applies a snapshot unless something newer is already on screen. */
@@ -66,6 +70,7 @@ export function useLobby(code: string) {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setSocket(null);
     };
   }, [code]);
 
@@ -84,5 +89,5 @@ export function useLobby(code: string) {
     };
   }, []);
 
-  return { ...state, ...actions };
+  return { ...state, ...actions, socket };
 }

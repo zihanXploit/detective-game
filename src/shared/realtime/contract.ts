@@ -36,6 +36,24 @@ export interface RoomStateEnvelope {
   view: LobbyView;
 }
 
+export type GamePhaseView = "BRIEFING" | "INVESTIGATION";
+
+/** One player's view of the game. Built per player on the server; never broadcast to the room. */
+export interface PlayerGameView {
+  phase: GamePhaseView;
+  you: { role: PlayerRoleView; briefingAcknowledged: boolean; notebook: string };
+  partner: { role: PlayerRoleView; briefingAcknowledged: boolean };
+}
+
+export interface GameStateEnvelope {
+  seq: number;
+  view: PlayerGameView;
+}
+
+export type GameActionPayload =
+  | { type: "ACKNOWLEDGE_BRIEFING" }
+  | { type: "UPDATE_NOTEBOOK"; text: string };
+
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string } };
@@ -51,6 +69,9 @@ export interface ClientToServerEvents {
   "lobby:setReady": (payload: { isReady: boolean }, ack: Ack<null>) => void;
   "lobby:start": (payload: NoPayload, ack: Ack<null>) => void;
   "lobby:leave": (payload: NoPayload, ack: Ack<null>) => void;
+  /** Fetches the caller's own view of the game; used on entering the game and after reconnecting. */
+  "game:sync": (payload: NoPayload, ack: Ack<GameStateEnvelope>) => void;
+  "game:act": (payload: GameActionPayload, ack: Ack<null>) => void;
 }
 
 export interface ServerToClientEvents {
@@ -58,6 +79,8 @@ export interface ServerToClientEvents {
   "lobby:state": (state: RoomStateEnvelope) => void;
   /** Sent privately to one player: their seat in this room is gone. */
   "lobby:evicted": (payload: { code: string }) => void;
+  /** Sent privately to one player: their own view of the game after any change. */
+  "game:state": (state: GameStateEnvelope) => void;
 }
 
 export interface SocketData {

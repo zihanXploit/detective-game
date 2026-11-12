@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, Card, ErrorNote, Wordmark } from "@/presentation/components/ui";
+import { GameScreen } from "@/presentation/game/GameScreen";
 import type { LobbyMemberView, LobbyView } from "@/shared/realtime/contract";
 import { RoomUnavailable } from "./RoomUnavailable";
-import { roleLabel, SeatCard } from "./SeatCard";
+import { SeatCard } from "./SeatCard";
 import { useLobby } from "./useLobby";
 
 function RoomCodeBadge({ code }: { code: string }) {
@@ -43,22 +44,9 @@ function statusLine(view: LobbyView, self: LobbyMemberView, connected: boolean):
   return "Waiting for your partner.";
 }
 
-/** Stand-in for the game screen until the case engine exists. */
-function CaseInProgress({ self }: { self: LobbyMemberView }) {
-  return (
-    <div className="rounded-lg border border-brass/40 bg-brass/10 p-5 text-center">
-      <h2 className="font-display text-xl text-brass">The case is open</h2>
-      <p className="mt-2 text-sm text-muted">
-        You are playing {self.role ? roleLabel(self.role) : "a role"}. The case itself arrives in a later
-        milestone; this room is saved and both of you can come back to it.
-      </p>
-    </div>
-  );
-}
-
 export function Lobby({ code, selfId }: { code: string; selfId: string }) {
   const router = useRouter();
-  const { view, connected, error, hasLeft, chooseRole, setReady, start, leave } = useLobby(code);
+  const { view, connected, error, hasLeft, chooseRole, setReady, start, leave, socket } = useLobby(code);
 
   useEffect(() => {
     if (hasLeft) router.replace("/");
@@ -106,7 +94,7 @@ export function Lobby({ code, selfId }: { code: string; selfId: string }) {
           !error && <p className="py-8 text-center text-sm text-muted">Opening the case room…</p>
         )}
 
-        {view && self && !inLobby && <CaseInProgress self={self} />}
+        {view && self && !inLobby && <GameScreen socket={socket} connected={connected} />}
 
         {view && self && inLobby && (
           <div className="flex flex-col gap-3 border-t border-ink-700 pt-5 sm:flex-row sm:items-center sm:justify-between">

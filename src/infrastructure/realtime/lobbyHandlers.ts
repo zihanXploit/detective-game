@@ -8,7 +8,7 @@ import {
   lobbySetReadySchema,
   noPayloadSchema,
 } from "@/shared/realtime/schemas";
-import { createCommandHandler } from "./commandHandler";
+import type { CommandHandler } from "./commandHandler";
 import type { KeyedSerialQueue } from "./KeyedSerialQueue";
 import type { RoomGateway } from "./RoomGateway";
 import type { GameSocket } from "./types";
@@ -19,9 +19,12 @@ export interface RealtimeServices {
   queue: KeyedSerialQueue;
 }
 
-export function registerLobbyHandlers(socket: GameSocket, { deps, gateway, queue }: RealtimeServices) {
+export function registerLobbyHandlers(
+  socket: GameSocket,
+  { deps, gateway, queue }: RealtimeServices,
+  command: CommandHandler,
+) {
   const { playerId } = socket.data;
-  const command = createCommandHandler(queue);
 
   const currentRoom = (): string => {
     if (!socket.data.roomCode) throw notRoomMember();

@@ -26,6 +26,8 @@ const refuse = (code: string, message: string): Result<never> => ({ ok: false, e
  * The client always gets exactly one ack, and nothing a handler throws can
  * reach the process as an unhandled rejection.
  */
+export type CommandHandler = ReturnType<typeof createCommandHandler>;
+
 export function createCommandHandler(queue: KeyedSerialQueue) {
   const limiter = new RateLimiter(EVENTS_PER_WINDOW, WINDOW_MS);
 

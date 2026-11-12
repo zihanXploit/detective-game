@@ -3,6 +3,8 @@ import { Server } from "socket.io";
 import { getEnv } from "@/infrastructure/config/env";
 import { buildRealtimeContainer } from "@/infrastructure/container";
 import { readCookie, SESSION_COOKIE, verifySessionToken } from "@/infrastructure/security/sessionToken";
+import { createCommandHandler } from "./commandHandler";
+import { registerGameHandlers } from "./gameHandlers";
 import { KeyedSerialQueue } from "./KeyedSerialQueue";
 import { registerLobbyHandlers, type RealtimeServices } from "./lobbyHandlers";
 import { RoomGateway } from "./RoomGateway";
@@ -46,6 +48,11 @@ export function attachRealtime(httpServer: HttpServer): GameServer {
     gateway: new RoomGateway(io, deps.presence, deps.getLobbyView),
     queue: new KeyedSerialQueue(),
   };
-  io.on("connection", (socket) => registerLobbyHandlers(socket, services));
+  io.on("connection", (socket) => {
+    // One pipeline per connection, so lobby and game events share a single rate limit.
+    const command = createCommandHandler(services.queue);
+    registerLobbyHandlers(socket, services, command);
+    registerGameHandlers(socket, services, command);
+  });
   return io;
 }
