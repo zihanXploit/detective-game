@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import type { ClientToServerEvents, LobbyView, ServerToClientEvents } from "@/shared/realtime/contract";
+import type {
+  ClientToServerEvents,
+  LobbyView,
+  PlayerRoleView,
+  Result,
+  ServerToClientEvents,
+} from "@/shared/realtime/contract";
 
 type LobbySocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -10,12 +16,16 @@ export interface LobbyState {
   view: LobbyView | null;
   connected: boolean;
   error: string | null;
+  /** True once this player has given up their seat. */
+  hasLeft: boolean;
 }
+
+const INITIAL: LobbyState = { view: null, connected: false, error: null, hasLeft: false };
 
 /** Owns the socket for one room: joins on every (re)connect and mirrors server state. */
 export function useLobby(code: string) {
   const socketRef = useRef<LobbySocket | null>(null);
-  const [state, setState] = useState<LobbyState>({ view: null, connected: false, error: null });
+  const [state, setState] = useState<LobbyState>(INITIAL);
 
   useEffect(() => {
     const socket: LobbySocket = io();
@@ -24,7 +34,7 @@ export function useLobby(code: string) {
     socket.on("connect", () => {
       // Re-sent after every reconnect, so a dropped connection heals without a page reload.
       socket.emit("lobby:join", { code }, (result) => {
-        if (result.ok) setState({ view: result.data, connected: true, error: null });
+        if (result.ok) setState((s) => ({ ...s, view: result.data, connected: true, error: null }));
         else setState((s) => ({ ...s, connected: false, error: result.error.message }));
       });
     });
@@ -44,11 +54,23 @@ export function useLobby(code: string) {
     };
   }, [code]);
 
-  const setReady = useCallback((isReady: boolean) => {
-    socketRef.current?.emit("lobby:setReady", { isReady }, (result) => {
-      if (!result.ok) setState((s) => ({ ...s, error: result.error.message }));
-    });
+  const actions = useMemo(() => {
+    /** The server broadcasts the new state itself; the ack only matters when it is a refusal. */
+    const report = (result: Result<null>) =>
+      setState((s) => ({ ...s, error: result.ok ? null : result.error.message }));
+
+    return {
+      chooseRole: (role: PlayerRoleView | null) =>
+        socketRef.current?.emit("lobby:chooseRole", { role }, report),
+      setReady: (isReady: boolean) => socketRef.current?.emit("lobby:setReady", { isReady }, report),
+      start: () => socketRef.current?.emit("lobby:start", {}, report),
+      leave: () =>
+        socketRef.current?.emit("lobby:leave", {}, (result) => {
+          if (result.ok) setState((s) => ({ ...s, hasLeft: true }));
+          else report(result);
+        }),
+    };
   }, []);
 
-  return { ...state, setReady };
+  return { ...state, ...actions };
 }

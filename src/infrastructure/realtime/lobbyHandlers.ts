@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import type { ZodType } from "zod";
-import { DomainError, isDomainError } from "@/domain/errors";
+import { isDomainError, notRoomMember, roomNotFound } from "@/domain/errors";
 import { parseRoomCode } from "@/domain/room/RoomCode";
 import type { RealtimeContainer } from "@/infrastructure/container";
 import type {
@@ -11,7 +11,12 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@/shared/realtime/contract";
-import { lobbyJoinSchema, lobbySetReadySchema } from "@/shared/realtime/schemas";
+import {
+  lobbyChooseRoleSchema,
+  lobbyJoinSchema,
+  lobbySetReadySchema,
+  noPayloadSchema,
+} from "@/shared/realtime/schemas";
 
 type NoEvents = Record<string, never>;
 export type GameServer = Server<ClientToServerEvents, ServerToClientEvents, NoEvents, SocketData>;
@@ -50,19 +55,39 @@ function handle<P, T>(schema: ZodType<P>, run: (payload: P) => Promise<T>) {
 export function registerLobbyHandlers(io: GameServer, socket: GameSocket, deps: RealtimeContainer) {
   const { playerId } = socket.data;
 
-  const broadcast = async (code: string): Promise<LobbyView> => {
-    const view = await deps.getLobbyView.execute({ code, requesterId: playerId });
-    io.to(channel(code)).emit("lobby:state", view);
+  /** Pushes the current lobby to everyone in the room. A deleted room has nobody left to tell. */
+  const broadcast = async (code: string): Promise<LobbyView | null> => {
+    const view = await deps.getLobbyView.snapshot(code);
+    if (view) io.to(channel(code)).emit("lobby:state", view);
     return view;
   };
 
-  const leaveCurrentRoom = async () => {
-    const previous = await deps.presence.disconnect(socket.id);
-    socket.data.roomCode = undefined;
-    if (!previous) return;
-    await socket.leave(channel(previous));
-    await broadcast(previous).catch((err) => console.error("[realtime] leave broadcast failed", err));
+  const currentRoom = (): string => {
+    if (!socket.data.roomCode) throw notRoomMember();
+    return socket.data.roomCode;
   };
+
+  /** Detaches one connection from its room without touching membership. */
+  const detach = async (target: { id: string; data: Partial<SocketData>; leave(room: string): unknown }) => {
+    const previous = await deps.presence.disconnect(target.id);
+    target.data.roomCode = undefined;
+    if (previous) await target.leave(channel(previous));
+    return previous;
+  };
+
+  const detachAndNotify = async () => {
+    const previous = await detach(socket);
+    if (previous) await broadcast(previous).catch((err) => console.error("[realtime] broadcast failed", err));
+  };
+
+  /** Runs a lobby mutation for this player's current room, then tells the room. */
+  const mutation = <P>(schema: ZodType<P>, run: (code: string, payload: P) => Promise<void>) =>
+    handle(schema, async (payload) => {
+      const code = currentRoom();
+      await run(code, payload);
+      await broadcast(code);
+      return null;
+    });
 
   socket.on(
     "lobby:join",
@@ -71,26 +96,47 @@ export function registerLobbyHandlers(io: GameServer, socket: GameSocket, deps: 
       // Authorisation: throws unless this player holds a seat in the room.
       await deps.getLobbyView.execute({ code, requesterId: playerId });
 
-      if (socket.data.roomCode && socket.data.roomCode !== code) await leaveCurrentRoom();
+      if (socket.data.roomCode && socket.data.roomCode !== code) await detachAndNotify();
       await socket.join(channel(code));
       await deps.presence.connect(socket.id, code, playerId);
       socket.data.roomCode = code;
-      return broadcast(code);
+
+      const view = await broadcast(code);
+      if (!view) throw roomNotFound();
+      return view;
     }),
   );
 
   socket.on(
+    "lobby:chooseRole",
+    mutation(lobbyChooseRoleSchema, (code, { role }) => deps.chooseRole.execute({ code, playerId, role })),
+  );
+
+  socket.on(
     "lobby:setReady",
-    handle(lobbySetReadySchema, async ({ isReady }) => {
-      const code = socket.data.roomCode;
-      if (!code) throw new DomainError("NOT_ROOM_MEMBER", "Join a room first.");
-      await deps.setReady.execute({ code, playerId, isReady });
+    mutation(lobbySetReadySchema, (code, { isReady }) => deps.setReady.execute({ code, playerId, isReady })),
+  );
+
+  socket.on(
+    "lobby:start",
+    mutation(noPayloadSchema, (code) => deps.startCase.execute({ code, playerId })),
+  );
+
+  socket.on(
+    "lobby:leave",
+    handle(noPayloadSchema, async () => {
+      const code = currentRoom();
+      await deps.leaveRoom.execute({ code, playerId });
+
+      // The player may have the room open in several tabs; none of them should keep receiving its state.
+      const sockets = await io.in(channel(code)).fetchSockets();
+      await Promise.all(sockets.filter((s) => s.data.playerId === playerId).map(detach));
       await broadcast(code);
       return null;
     }),
   );
 
   socket.on("disconnect", () => {
-    void leaveCurrentRoom();
+    void detachAndNotify();
   });
 }
