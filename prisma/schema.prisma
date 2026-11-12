@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoomStatus {
+  LOBBY
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum GameSessionStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+/// A guest identity. Created on first room create/join and bound to a signed cookie.
+model Player {
+  id          String   @id @default(uuid()) @db.Uuid
+  displayName String   @db.VarChar(24)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships RoomMember[]
+  hostedRooms Room[]
+
+  @@map("players")
+}
+
+/// A persistent two-player partnership. The code stays valid so the pair can come back and resume.
+model Room {
+  id        String     @id @db.Uuid
+  code      String     @unique @db.VarChar(6)
+  status    RoomStatus @default(LOBBY)
+  hostId    String     @db.Uuid
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  host     Player        @relation(fields: [hostId], references: [id])
+  members  RoomMember[]
+  sessions GameSession[]
+
+  @@index([updatedAt])
+  @@map("rooms")
+}
+
+model RoomMember {
+  roomId   String   @db.Uuid
+  playerId String   @db.Uuid
+  /// 0 or 1. The unique (roomId, seat) constraint is what enforces the two-player cap under concurrent joins.
+  seat     Int      @db.SmallInt
+  isReady  Boolean  @default(false)
+  joinedAt DateTime @default(now())
+
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@id([roomId, playerId])
+  @@unique([roomId, seat])
+  @@index([playerId])
+  @@map("room_members")
+}
+
+/// One playthrough of one case by one room. Case content lives in code and is referenced by slug.
+/// Not used yet: the table exists so save/resume has a home when gameplay lands.
+model GameSession {
+  id           String            @id @default(uuid()) @db.Uuid
+  roomId       String            @db.Uuid
+  caseSlug     String            @db.VarChar(64)
+  /// Version of the case content the state was written against, for migrating saves when a case changes.
+  caseVersion  Int
+  status       GameSessionStatus @default(ACTIVE)
+  /// Authoritative game state snapshot. Shape is owned by the case engine.
+  state        Json
+  /// Incremented on every write; used for optimistic concurrency.
+  stateVersion Int               @default(0)
+  startedAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  completedAt  DateTime?
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, caseSlug])
+  @@map("game_sessions")
+}

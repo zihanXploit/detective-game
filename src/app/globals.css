@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #0c0e13;
+  --color-ink-900: #13161d;
+  --color-ink-800: #1b1f29;
+  --color-ink-700: #2a3040;
+  --color-paper: #ece6d8;
+  --color-muted: #9b9584;
+  --color-brass: #d9a441;
+  --color-brass-deep: #b3822a;
+  --color-signal: #6fbf8b;
+  --color-alert: #e07a6a;
+  --font-display: Georgia, "Times New Roman", serif;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top, rgb(217 164 65 / 0.08), transparent 60%),
+    var(--color-ink-950);
+  color: var(--color-paper);
+  min-height: 100dvh;
+}

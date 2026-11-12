@@ -1,0 +1,58 @@
+import { randomUUID } from "node:crypto";
+import type { Clock, IdGenerator } from "@/application/ports";
+import { CheckRoomAccess } from "@/application/use-cases/CheckRoomAccess";
+import { CreateRoom } from "@/application/use-cases/CreateRoom";
+import { GetLobbyView } from "@/application/use-cases/GetLobbyView";
+import { IdentifyPlayer } from "@/application/use-cases/IdentifyPlayer";
+import { JoinRoom } from "@/application/use-cases/JoinRoom";
+import { SetReady } from "@/application/use-cases/SetReady";
+import { PrismaPlayerRepository } from "./db/PrismaPlayerRepository";
+import { PrismaRoomRepository } from "./db/PrismaRoomRepository";
+import { getPrisma } from "./db/prisma";
+import { InMemoryPresenceTracker } from "./realtime/InMemoryPresenceTracker";
+import { CryptoRoomCodeGenerator } from "./security/CryptoRoomCodeGenerator";
+
+/**
+ * Composition roots: the only place that knows which concrete classes back the ports.
+ *
+ * There are two because Next.js bundles route handlers separately from server.ts, so the
+ * two halves do not share module instances. Anything stateful and in-memory (presence)
+ * therefore belongs to the realtime side only, and HTTP handlers never emit socket events.
+ */
+
+const clock: Clock = () => new Date();
+const ids: IdGenerator = { next: () => randomUUID() };
+
+function repositories() {
+  const prisma = getPrisma();
+  return { players: new PrismaPlayerRepository(prisma), rooms: new PrismaRoomRepository(prisma) };
+}
+
+export function buildHttpContainer() {
+  const { players, rooms } = repositories();
+  return {
+    identifyPlayer: new IdentifyPlayer(players),
+    createRoom: new CreateRoom(rooms, new CryptoRoomCodeGenerator(), ids, clock),
+    joinRoom: new JoinRoom(rooms, clock),
+    checkRoomAccess: new CheckRoomAccess(rooms),
+  };
+}
+export type HttpContainer = ReturnType<typeof buildHttpContainer>;
+
+const globalForContainer = globalThis as unknown as { httpContainer?: HttpContainer };
+
+export function getHttpContainer(): HttpContainer {
+  globalForContainer.httpContainer ??= buildHttpContainer();
+  return globalForContainer.httpContainer;
+}
+
+export function buildRealtimeContainer() {
+  const { players, rooms } = repositories();
+  const presence = new InMemoryPresenceTracker();
+  return {
+    presence,
+    getLobbyView: new GetLobbyView(rooms, players, presence),
+    setReady: new SetReady(rooms),
+  };
+}
+export type RealtimeContainer = ReturnType<typeof buildRealtimeContainer>;
