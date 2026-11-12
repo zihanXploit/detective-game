@@ -1,110 +1,68 @@
-import type { Server, Socket } from "socket.io";
 import type { ZodType } from "zod";
-import { isDomainError, notRoomMember, roomNotFound } from "@/domain/errors";
+import { notRoomMember, roomNotFound } from "@/domain/errors";
 import { parseRoomCode } from "@/domain/room/RoomCode";
 import type { RealtimeContainer } from "@/infrastructure/container";
-import type {
-  Ack,
-  ClientToServerEvents,
-  LobbyView,
-  Result,
-  ServerToClientEvents,
-  SocketData,
-} from "@/shared/realtime/contract";
 import {
   lobbyChooseRoleSchema,
   lobbyJoinSchema,
   lobbySetReadySchema,
   noPayloadSchema,
 } from "@/shared/realtime/schemas";
+import { createCommandHandler } from "./commandHandler";
+import type { KeyedSerialQueue } from "./KeyedSerialQueue";
+import type { RoomGateway } from "./RoomGateway";
+import type { GameSocket } from "./types";
 
-type NoEvents = Record<string, never>;
-export type GameServer = Server<ClientToServerEvents, ServerToClientEvents, NoEvents, SocketData>;
-export type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents, NoEvents, SocketData>;
-
-const channel = (code: string) => `room:${code}`;
-
-function toFailure(err: unknown): Result<never> {
-  if (isDomainError(err)) {
-    return { ok: false, error: { code: err.code, message: err.message } };
-  }
-  console.error("[realtime] unexpected error", err);
-  return { ok: false, error: { code: "INTERNAL", message: "Something went wrong. Please try again." } };
+export interface RealtimeServices {
+  deps: RealtimeContainer;
+  gateway: RoomGateway;
+  queue: KeyedSerialQueue;
 }
 
-/**
- * Wraps a handler so that every event validates its payload, always answers the
- * client's ack, and can never crash the process with an unhandled rejection.
- */
-function handle<P, T>(schema: ZodType<P>, run: (payload: P) => Promise<T>) {
-  return async (raw: unknown, ack?: Ack<T>) => {
-    const reply: Ack<T> = typeof ack === "function" ? ack : () => {};
-    const parsed = schema.safeParse(raw);
-    if (!parsed.success) {
-      reply({ ok: false, error: { code: "BAD_REQUEST", message: "Malformed request." } });
-      return;
-    }
-    try {
-      reply({ ok: true, data: await run(parsed.data) });
-    } catch (err) {
-      reply(toFailure(err));
-    }
-  };
-}
-
-export function registerLobbyHandlers(io: GameServer, socket: GameSocket, deps: RealtimeContainer) {
+export function registerLobbyHandlers(socket: GameSocket, { deps, gateway, queue }: RealtimeServices) {
   const { playerId } = socket.data;
-
-  /** Pushes the current lobby to everyone in the room. A deleted room has nobody left to tell. */
-  const broadcast = async (code: string): Promise<LobbyView | null> => {
-    const view = await deps.getLobbyView.snapshot(code);
-    if (view) io.to(channel(code)).emit("lobby:state", view);
-    return view;
-  };
+  const command = createCommandHandler(queue);
 
   const currentRoom = (): string => {
     if (!socket.data.roomCode) throw notRoomMember();
     return socket.data.roomCode;
   };
 
-  /** Detaches one connection from its room without touching membership. */
-  const detach = async (target: { id: string; data: Partial<SocketData>; leave(room: string): unknown }) => {
-    const previous = await deps.presence.disconnect(target.id);
-    target.data.roomCode = undefined;
-    if (previous) await target.leave(channel(previous));
-    return previous;
-  };
-
+  /** Detaches this connection and tells the room, in that room's turn so the update is ordered. */
   const detachAndNotify = async () => {
-    const previous = await detach(socket);
-    if (previous) await broadcast(previous).catch((err) => console.error("[realtime] broadcast failed", err));
+    const previous = socket.data.roomCode;
+    if (!previous) return;
+    await queue.run(previous, async () => {
+      await gateway.detach(socket);
+      await gateway.publishState(previous);
+    });
   };
 
-  /** Runs a lobby mutation for this player's current room, then tells the room. */
+  /** A change to this player's current room, followed by a state update for everyone in it. */
   const mutation = <P>(schema: ZodType<P>, run: (code: string, payload: P) => Promise<void>) =>
-    handle(schema, async (payload) => {
-      const code = currentRoom();
+    command(schema, currentRoom, async (payload, code) => {
       await run(code, payload);
-      await broadcast(code);
+      await gateway.publishState(code);
       return null;
     });
 
   socket.on(
     "lobby:join",
-    handle(lobbyJoinSchema, async ({ code: rawCode }) => {
-      const code = parseRoomCode(rawCode);
-      // Authorisation: throws unless this player holds a seat in the room.
-      await deps.getLobbyView.execute({ code, requesterId: playerId });
+    command(
+      lobbyJoinSchema,
+      ({ code }) => parseRoomCode(code),
+      async (_payload, code) => {
+        // Authorisation: throws unless this player holds a seat in the room.
+        await deps.getLobbyView.execute({ code, requesterId: playerId });
 
-      if (socket.data.roomCode && socket.data.roomCode !== code) await detachAndNotify();
-      await socket.join(channel(code));
-      await deps.presence.connect(socket.id, code, playerId);
-      socket.data.roomCode = code;
+        if (socket.data.roomCode && socket.data.roomCode !== code) await detachAndNotify();
+        await gateway.attach(socket, parseRoomCode(code));
 
-      const view = await broadcast(code);
-      if (!view) throw roomNotFound();
-      return view;
-    }),
+        const state = await gateway.publishState(code);
+        if (!state) throw roomNotFound();
+        return state;
+      },
+    ),
   );
 
   socket.on(
@@ -124,19 +82,16 @@ export function registerLobbyHandlers(io: GameServer, socket: GameSocket, deps: 
 
   socket.on(
     "lobby:leave",
-    handle(noPayloadSchema, async () => {
-      const code = currentRoom();
+    command(noPayloadSchema, currentRoom, async (_payload, code) => {
       await deps.leaveRoom.execute({ code, playerId });
-
-      // The player may have the room open in several tabs; none of them should keep receiving its state.
-      const sockets = await io.in(channel(code)).fetchSockets();
-      await Promise.all(sockets.filter((s) => s.data.playerId === playerId).map(detach));
-      await broadcast(code);
+      // The player may have the room open in several tabs; none may keep receiving its state.
+      await gateway.evict(code, playerId);
+      await gateway.publishState(code);
       return null;
     }),
   );
 
   socket.on("disconnect", () => {
-    void detachAndNotify();
+    detachAndNotify().catch((err) => console.error("[realtime] disconnect cleanup failed", err));
   });
 }

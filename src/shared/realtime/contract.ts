@@ -25,6 +25,17 @@ export interface LobbyView {
   members: LobbyMemberView[];
 }
 
+/**
+ * A full snapshot of room state stamped with a server sequence number.
+ * Sequence numbers only ever grow within one connection, so a client can drop
+ * anything older than what it already shows. They restart when the server
+ * does, which is why clients reset their baseline on every (re)connect.
+ */
+export interface RoomStateEnvelope {
+  seq: number;
+  view: LobbyView;
+}
+
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string } };
@@ -34,7 +45,8 @@ export type Ack<T> = (result: Result<T>) => void;
 type NoPayload = Record<string, never>;
 
 export interface ClientToServerEvents {
-  "lobby:join": (payload: { code: string }, ack: Ack<LobbyView>) => void;
+  /** Also the resync request: the ack always carries the latest snapshot. */
+  "lobby:join": (payload: { code: string }, ack: Ack<RoomStateEnvelope>) => void;
   "lobby:chooseRole": (payload: { role: PlayerRoleView | null }, ack: Ack<null>) => void;
   "lobby:setReady": (payload: { isReady: boolean }, ack: Ack<null>) => void;
   "lobby:start": (payload: NoPayload, ack: Ack<null>) => void;
@@ -42,7 +54,10 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  "lobby:state": (view: LobbyView) => void;
+  /** Sent to everyone in the room. Never carries anything one player must not see. */
+  "lobby:state": (state: RoomStateEnvelope) => void;
+  /** Sent privately to one player: their seat in this room is gone. */
+  "lobby:evicted": (payload: { code: string }) => void;
 }
 
 export interface SocketData {
