@@ -5,10 +5,13 @@ import { ChooseRole } from "@/application/use-cases/ChooseRole";
 import { CreateRoom } from "@/application/use-cases/CreateRoom";
 import { LeaveRoom } from "@/application/use-cases/LeaveRoom";
 import { StartCase } from "@/application/use-cases/StartCase";
+import { GetGameView } from "@/application/use-cases/GetGameView";
 import { GetLobbyView } from "@/application/use-cases/GetLobbyView";
+import { PerformGameAction } from "@/application/use-cases/PerformGameAction";
 import { IdentifyPlayer } from "@/application/use-cases/IdentifyPlayer";
 import { JoinRoom } from "@/application/use-cases/JoinRoom";
 import { SetReady } from "@/application/use-cases/SetReady";
+import { PrismaGameSessionRepository } from "./db/PrismaGameSessionRepository";
 import { PrismaPlayerRepository } from "./db/PrismaPlayerRepository";
 import { PrismaRoomRepository } from "./db/PrismaRoomRepository";
 import { getPrisma } from "./db/prisma";
@@ -52,12 +55,15 @@ export function getHttpContainer(): HttpContainer {
 export function buildRealtimeContainer() {
   const { players, rooms } = repositories();
   const presence = new InMemoryPresenceTracker();
+  const sessions = new PrismaGameSessionRepository(getPrisma());
   return {
     presence,
     getLobbyView: new GetLobbyView(rooms, players, presence),
     chooseRole: new ChooseRole(rooms),
     setReady: new SetReady(rooms),
-    startCase: new StartCase(rooms),
+    startCase: new StartCase(rooms, sessions),
+    getGameView: new GetGameView(rooms, sessions),
+    performGameAction: new PerformGameAction(rooms, sessions),
     leaveRoom: new LeaveRoom(rooms),
   };
 }
