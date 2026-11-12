@@ -87,9 +87,18 @@ export class Room {
     return this.currentStatus === "LOBBY" && !this.isFull;
   }
 
-  /** Ready implies a role, and roles are unique, so "everyone ready" also means "both roles covered". */
+  /**
+   * Roles are checked explicitly rather than inferred from readiness, so a room
+   * can never start with a role uncovered even if stored data is inconsistent.
+   */
   get canStart(): boolean {
-    return this.currentStatus === "LOBBY" && this.isFull && this.memberList.every((m) => m.isReady);
+    const roles = new Set(this.memberList.map((m) => m.role));
+    return (
+      this.currentStatus === "LOBBY" &&
+      this.isFull &&
+      this.memberList.every((m) => m.isReady && m.role !== null) &&
+      roles.size === this.memberList.length
+    );
   }
 
   findMember(playerId: string): RoomMember | undefined {

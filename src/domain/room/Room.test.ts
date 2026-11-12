@@ -98,6 +98,21 @@ describe("Room start", () => {
     expect(room.canStart).toBe(true);
   });
 
+  it("cannot start when a stored member is ready but has no role", () => {
+    const room = new Room({
+      id: "r1",
+      code: parseRoomCode("ABCDEF"),
+      status: "LOBBY",
+      hostId: "host",
+      members: [
+        { playerId: "host", seat: 0, role: "A", isReady: true, joinedAt: now },
+        { playerId: "guest", seat: 1, role: null, isReady: true, joinedAt: now },
+      ],
+    });
+    expect(room.canStart).toBe(false);
+    expect(codeOf(() => room.start("host"))).toBe("ROOM_NOT_READY");
+  });
+
   it("lets only the host start, and only when ready", () => {
     const room = readyRoom();
     expect(codeOf(() => room.start("guest"))).toBe("NOT_HOST");
