@@ -1,3 +1,4 @@
+import type { GameState } from "@/domain/game/GameState";
 import type { Player } from "@/domain/player/Player";
 import type { Room, RoomMember } from "@/domain/room/Room";
 import type { RoomCode } from "@/domain/room/RoomCode";
@@ -24,6 +25,27 @@ export interface RoomRepository {
   removeMember(room: Room, playerId: string): Promise<void>;
   /** Moves the room out of the lobby. Returns false if it had already left it. */
   markStarted(roomId: string): Promise<boolean>;
+}
+
+/** Which case a session is playing, and the version of its content the state was written against. */
+export interface CaseRef {
+  slug: string;
+  version: number;
+}
+
+export interface StoredGameSession {
+  id: string;
+  state: GameState;
+  /** Bumped on every save; pass it back to `save` to detect a concurrent writer. */
+  version: number;
+}
+
+export interface GameSessionRepository {
+  findActiveByRoom(roomId: string): Promise<StoredGameSession | null>;
+  /** Idempotent per room and case: returns the existing session if one was created concurrently. */
+  create(roomId: string, caseRef: CaseRef, state: GameState): Promise<StoredGameSession>;
+  /** Writes only if the stored version still equals `expectedVersion`. Returns false otherwise. */
+  save(id: string, state: GameState, expectedVersion: number): Promise<boolean>;
 }
 
 export interface RoomCodeGenerator {

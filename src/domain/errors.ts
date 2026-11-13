@@ -10,6 +10,9 @@ export type DomainErrorCode =
   | "ROOM_NOT_READY"
   | "ROLE_TAKEN"
   | "ROLE_REQUIRED"
+  | "GAME_NOT_STARTED"
+  | "INVALID_ACTION"
+  | "STATE_CONFLICT"
   | "ROOM_CODE_TAKEN"
   | "ROOM_CODE_EXHAUSTED";
 
@@ -56,6 +59,11 @@ export const roomNotReady = () =>
 export const roleTaken = () =>
   new DomainError("ROLE_TAKEN", "Your partner already holds that role.");
 export const roleRequired = () => new DomainError("ROLE_REQUIRED", "Pick a role before readying up.");
+export const gameNotStarted = () =>
+  new DomainError("GAME_NOT_STARTED", "The case has not been started yet.");
+export const invalidAction = (message: string) => new DomainError("INVALID_ACTION", message);
+export const stateConflict = () =>
+  new DomainError("STATE_CONFLICT", "The case changed while you were acting. Please try again.");
 export const roomCodeTaken = () =>
   new DomainError("ROOM_CODE_TAKEN", "That room code is already in use.");
 export const roomCodeExhausted = () =>

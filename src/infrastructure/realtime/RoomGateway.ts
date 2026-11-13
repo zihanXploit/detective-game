@@ -1,7 +1,12 @@
 import type { PresenceTracker } from "@/application/ports";
 import type { GetLobbyView } from "@/application/use-cases/GetLobbyView";
 import type { RoomCode } from "@/domain/room/RoomCode";
-import type { RoomStateEnvelope, SocketData } from "@/shared/realtime/contract";
+import type {
+  GameStateEnvelope,
+  PlayerGameView,
+  RoomStateEnvelope,
+  SocketData,
+} from "@/shared/realtime/contract";
 import type { GameServer } from "./types";
 
 /** Everyone seated in the room. Only for data both players may see. */
@@ -60,6 +65,16 @@ export class RoomGateway {
     const state: RoomStateEnvelope = { seq: ++this.lastSeq, view };
     this.io.to(roomChannel(code)).emit("lobby:state", state);
     return state;
+  }
+
+  /** Stamps one player's game view for the ack of their own request. */
+  stampGameView(view: PlayerGameView): GameStateEnvelope {
+    return { seq: ++this.lastSeq, view };
+  }
+
+  /** Delivers a game view to its owner only, on every tab they have open in this room. */
+  sendGameView(code: string, playerId: string, view: PlayerGameView): void {
+    this.io.to(playerChannel(code, playerId)).emit("game:state", this.stampGameView(view));
   }
 
   /** Tells every tab a player has open on this room that their seat is gone, then cuts them off. */
