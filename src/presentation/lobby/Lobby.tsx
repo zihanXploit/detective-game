@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, Card, ErrorNote, Wordmark } from "@/presentation/components/ui";
 import { GameScreen } from "@/presentation/game/GameScreen";
-import type { LobbyMemberView, LobbyView } from "@/shared/realtime/contract";
+import type { CaseSummaryView, LobbyMemberView, LobbyView } from "@/shared/realtime/contract";
+import { CasePicker } from "./CasePicker";
 import { RoomUnavailable } from "./RoomUnavailable";
 import { SeatCard } from "./SeatCard";
 import { useLobby } from "./useLobby";
@@ -37,6 +38,7 @@ function RoomCodeBadge({ code }: { code: string }) {
 
 function statusLine(view: LobbyView, self: LobbyMemberView, connected: boolean): string {
   if (!connected) return "Reconnecting…";
+  if (!view.caseSlug) return self.isHost ? "Choose a case to play." : "Waiting for the host to choose a case.";
   if (view.members.length < view.capacity) return "Share the code with your partner to begin.";
   if (view.canStart) return self.isHost ? "Both detectives are ready." : "Waiting for the host to start.";
   if (!self.role) return "Pick a role to continue.";
@@ -44,9 +46,17 @@ function statusLine(view: LobbyView, self: LobbyMemberView, connected: boolean):
   return "Waiting for your partner.";
 }
 
-export function Lobby({ code, selfId }: { code: string; selfId: string }) {
+interface LobbyProps {
+  code: string;
+  selfId: string;
+  /** The catalog of playable cases; fixed for the life of the page. */
+  cases: readonly CaseSummaryView[];
+}
+
+export function Lobby({ code, selfId, cases }: LobbyProps) {
   const router = useRouter();
-  const { view, connected, error, hasLeft, chooseRole, setReady, start, leave, socket } = useLobby(code);
+  const { view, connected, error, hasLeft, selectCase, chooseRole, setReady, start, leave, socket } =
+    useLobby(code);
 
   useEffect(() => {
     if (hasLeft) router.replace("/");
@@ -61,6 +71,7 @@ export function Lobby({ code, selfId }: { code: string; selfId: string }) {
   }
 
   const inLobby = view?.status === "LOBBY";
+  const roleNames = cases.find((c) => c.slug === view?.caseSlug)?.roleNames ?? null;
   const seats = Array.from({ length: view?.capacity ?? 2 }, (_, seat) =>
     view?.members.find((m) => m.seat === seat),
   );
@@ -81,6 +92,7 @@ export function Lobby({ code, selfId }: { code: string; selfId: string }) {
                   key={seat}
                   member={member}
                   isSelf={isSelf}
+                  roleNames={roleNames}
                   picker={
                     isSelf && inLobby
                       ? { takenByPartner: partner?.role ?? null, disabled: !connected, onChoose: chooseRole }
@@ -92,6 +104,16 @@ export function Lobby({ code, selfId }: { code: string; selfId: string }) {
           </div>
         ) : (
           !error && <p className="py-8 text-center text-sm text-muted">Opening the case room…</p>
+        )}
+
+        {view && self && inLobby && (
+          <CasePicker
+            cases={cases}
+            selectedSlug={view.caseSlug}
+            canChoose={self.isHost}
+            disabled={!connected}
+            onSelect={selectCase}
+          />
         )}
 
         {view && self && !inLobby && <GameScreen socket={socket} connected={connected} />}

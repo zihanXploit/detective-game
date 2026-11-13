@@ -2,7 +2,7 @@
 
 import { Button, ErrorNote } from "@/presentation/components/ui";
 import type { RoomSocket } from "@/presentation/lobby/useLobby";
-import type { PlayerGameView } from "@/shared/realtime/contract";
+import type { CaseFileView, PlayerGameView } from "@/shared/realtime/contract";
 import { Notebook } from "./Notebook";
 import { useGame } from "./useGame";
 
@@ -15,16 +15,29 @@ function BriefingStatus({ view }: { view: PlayerGameView }) {
   );
   return (
     <ul className="space-y-1.5">
-      {line(`You (Role ${view.you.role})`, view.you.briefingAcknowledged)}
-      {line(`Your partner (Role ${view.partner.role})`, view.partner.briefingAcknowledged)}
+      {line(`You (${view.caseFile.yourRole.name})`, view.you.briefingAcknowledged)}
+      {line(`Your partner (${view.caseFile.partnerRoleName})`, view.partner.briefingAcknowledged)}
     </ul>
   );
 }
 
-/**
- * The game screen. It holds the engine's mechanics only (phases and a private
- * notebook); case content will render here once the case system exists.
- */
+/** This player's private briefing. The partner's copy holds different text. */
+function Briefing({ caseFile }: { caseFile: CaseFileView }) {
+  return (
+    <section aria-labelledby="briefing-heading" className="rounded-lg border border-ink-700 bg-ink-950/60 p-4">
+      <h3 id="briefing-heading" className="text-xs font-medium uppercase tracking-wider text-muted">
+        Your briefing · for your eyes only
+      </h3>
+      <div className="mt-2 space-y-2 text-sm leading-relaxed">
+        {caseFile.yourRole.briefing.map((paragraph, index) => (
+          <p key={index}>{paragraph}</p>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** The game screen: the case's briefing for this role, the phase, and a private notebook. */
 export function GameScreen({ socket, connected }: { socket: RoomSocket | null; connected: boolean }) {
   const { view, error, act } = useGame(socket, connected);
 
@@ -38,20 +51,22 @@ export function GameScreen({ socket, connected }: { socket: RoomSocket | null; c
   }
 
   const inBriefing = view.phase === "BRIEFING";
+  const { caseFile } = view;
 
   return (
     <div className="space-y-5 rounded-lg border border-brass/40 bg-brass/5 p-5">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">Phase</p>
-        <h2 className="font-display text-xl text-brass">{inBriefing ? "Briefing" : "Investigation"}</h2>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">
+          {inBriefing ? "Briefing" : "Investigation"}
+        </p>
+        <h2 className="font-display text-xl text-brass">{caseFile.title}</h2>
         <p className="mt-1 text-sm text-muted">
-          {inBriefing
-            ? "No case is loaded yet, so there is nothing to read. Confirm when you are both set."
-            : "The investigation is open. Case content arrives in a later milestone."}
+          You are {caseFile.yourRole.name}. {caseFile.yourRole.summary}
         </p>
       </div>
 
       <ErrorNote message={error} />
+      <Briefing caseFile={caseFile} />
 
       {inBriefing && (
         <>

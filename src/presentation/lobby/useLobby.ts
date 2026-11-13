@@ -80,6 +80,7 @@ export function useLobby(code: string) {
       setState((s) => ({ ...s, error: result.ok ? null : result.error.message }));
 
     return {
+      selectCase: (caseSlug: string) => socketRef.current?.emit("lobby:selectCase", { caseSlug }, report),
       chooseRole: (role: PlayerRoleView | null) =>
         socketRef.current?.emit("lobby:chooseRole", { role }, report),
       setReady: (isReady: boolean) => socketRef.current?.emit("lobby:setReady", { isReady }, report),

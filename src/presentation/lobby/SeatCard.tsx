@@ -1,8 +1,9 @@
 import type { LobbyMemberView, PlayerRoleView } from "@/shared/realtime/contract";
 
 const ROLES: readonly PlayerRoleView[] = ["A", "B"];
-/** Placeholder labels: each case will supply its own names for the two sides. */
-export const roleLabel = (role: PlayerRoleView) => `Role ${role}`;
+export type RoleNames = Record<PlayerRoleView, string>;
+/** The chosen case's name for a side, or a neutral label while no case is chosen. */
+export const roleLabel = (role: PlayerRoleView, names?: RoleNames | null) => names?.[role] ?? `Role ${role}`;
 
 function Tag({ children, tone }: { children: string; tone: "brass" | "muted" | "signal" }) {
   const tones = {
@@ -22,9 +23,10 @@ interface RolePickerProps {
   takenByPartner: PlayerRoleView | null;
   disabled: boolean;
   onChoose: (role: PlayerRoleView | null) => void;
+  roleNames?: RoleNames | null;
 }
 
-function RolePicker({ current, takenByPartner, disabled, onChoose }: RolePickerProps) {
+function RolePicker({ current, takenByPartner, disabled, onChoose, roleNames }: RolePickerProps) {
   return (
     <div className="mt-4 flex gap-2" role="group" aria-label="Choose your role">
       {ROLES.map((role) => {
@@ -44,7 +46,7 @@ function RolePicker({ current, takenByPartner, disabled, onChoose }: RolePickerP
               disabled:cursor-not-allowed disabled:opacity-40
               ${selected ? "border-brass bg-brass/15 text-brass" : "border-ink-700 text-paper hover:bg-ink-700/60"}`}
           >
-            {roleLabel(role)}
+            {roleLabel(role, roleNames)}
           </button>
         );
       })}
@@ -56,10 +58,11 @@ interface SeatCardProps {
   member: LobbyMemberView | undefined;
   isSelf: boolean;
   /** Present only for the viewer's own seat while the lobby is open. */
-  picker?: Omit<RolePickerProps, "current">;
+  picker?: Omit<RolePickerProps, "current" | "roleNames">;
+  roleNames?: RoleNames | null;
 }
 
-export function SeatCard({ member, isSelf, picker }: SeatCardProps) {
+export function SeatCard({ member, isSelf, picker, roleNames }: SeatCardProps) {
   if (!member) {
     return (
       <div className="flex min-h-36 items-center justify-center rounded-lg border border-dashed border-ink-700 p-4 text-sm text-muted">
@@ -82,10 +85,10 @@ export function SeatCard({ member, isSelf, picker }: SeatCardProps) {
         {isSelf && <Tag tone="muted">You</Tag>}
         {member.isHost && <Tag tone="brass">Host</Tag>}
         {!member.isOnline && <Tag tone="muted">Away</Tag>}
-        {!picker && <Tag tone={member.role ? "brass" : "muted"}>{member.role ? roleLabel(member.role) : "No role yet"}</Tag>}
+        {!picker && <Tag tone={member.role ? "brass" : "muted"}>{member.role ? roleLabel(member.role, roleNames) : "No role yet"}</Tag>}
         <Tag tone={member.isReady ? "signal" : "muted"}>{member.isReady ? "Ready" : "Not ready"}</Tag>
       </div>
-      {picker && <RolePicker current={member.role} {...picker} />}
+      {picker && <RolePicker current={member.role} roleNames={roleNames} {...picker} />}
     </div>
   );
 }

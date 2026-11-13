@@ -9,12 +9,13 @@ export const dynamic = "force-dynamic";
 export default async function RoomPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const playerId = await readSessionPlayerId();
-  const access = await getHttpContainer().checkRoomAccess.execute({ code, playerId });
+  const { checkRoomAccess, cases } = getHttpContainer();
+  const access = await checkRoomAccess.execute({ code, playerId });
 
   switch (access.kind) {
     case "member":
       // playerId is non-null here: membership can only be established with a session.
-      return <Lobby code={access.code} selfId={playerId!} />;
+      return <Lobby code={access.code} selfId={playerId!} cases={[...cases.list()]} />;
     case "joinable":
       return <JoinPrompt code={access.code} />;
     case "closed":
