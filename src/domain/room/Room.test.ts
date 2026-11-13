@@ -10,6 +10,7 @@ const openRoom = () => Room.open({ id: "r1", code: parseRoomCode("ABCDEF"), host
 const readyRoom = () => {
   const room = openRoom();
   room.admit("guest", now);
+  room.selectCase("host", "some-case");
   room.chooseRole("host", "A");
   room.chooseRole("guest", "B");
   room.setReady("host", true);
@@ -85,9 +86,48 @@ describe("Room roles and readiness", () => {
   });
 });
 
+describe("Room case selection", () => {
+  it("cannot start until the host has chosen a case", () => {
+    const room = openRoom();
+    room.admit("guest", now);
+    room.chooseRole("host", "A");
+    room.chooseRole("guest", "B");
+    room.setReady("host", true);
+    room.setReady("guest", true);
+    expect(room.canStart).toBe(false);
+    expect(codeOf(() => room.start("host"))).toBe("ROOM_NOT_READY");
+  });
+
+  it("lets only the host choose, and only in the lobby", () => {
+    const room = readyRoom();
+    expect(codeOf(() => room.selectCase("guest", "other-case"))).toBe("NOT_HOST");
+    expect(codeOf(() => room.selectCase("stranger", "other-case"))).toBe("NOT_ROOM_MEMBER");
+    room.start("host");
+    expect(codeOf(() => room.selectCase("host", "other-case"))).toBe("ROOM_LOCKED");
+  });
+
+  it("withdraws everyone's readiness when the case changes, but not when it is re-selected", () => {
+    const room = readyRoom();
+    room.selectCase("host", "some-case");
+    expect(room.canStart).toBe(true);
+
+    room.selectCase("host", "other-case");
+    expect(room.caseSlug).toBe("other-case");
+    expect(room.members.every((m) => !m.isReady)).toBe(true);
+    expect(room.members.map((m) => m.role)).toEqual(["A", "B"]);
+  });
+
+  it("keeps the chosen case when the host leaves", () => {
+    const room = readyRoom();
+    room.leave("host");
+    expect(room.caseSlug).toBe("some-case");
+  });
+});
+
 describe("Room start", () => {
   it("can start only when both seats are filled and ready", () => {
     const room = openRoom();
+    room.selectCase("host", "some-case");
     room.chooseRole("host", "A");
     room.setReady("host", true);
     expect(room.canStart).toBe(false);
@@ -104,6 +144,7 @@ describe("Room start", () => {
       code: parseRoomCode("ABCDEF"),
       status: "LOBBY",
       hostId: "host",
+      caseSlug: "some-case",
       members: [
         { playerId: "host", seat: 0, role: "A", isReady: true, joinedAt: now },
         { playerId: "guest", seat: 1, role: null, isReady: true, joinedAt: now },

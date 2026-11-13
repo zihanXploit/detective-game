@@ -11,6 +11,9 @@ import { PerformGameAction } from "@/application/use-cases/PerformGameAction";
 import { IdentifyPlayer } from "@/application/use-cases/IdentifyPlayer";
 import { JoinRoom } from "@/application/use-cases/JoinRoom";
 import { SetReady } from "@/application/use-cases/SetReady";
+import { SelectCase } from "@/application/use-cases/SelectCase";
+import { ALL_CASES } from "@/content/cases";
+import { StaticCaseCatalog } from "./content/StaticCaseCatalog";
 import { PrismaGameSessionRepository } from "./db/PrismaGameSessionRepository";
 import { PrismaPlayerRepository } from "./db/PrismaPlayerRepository";
 import { PrismaRoomRepository } from "./db/PrismaRoomRepository";
@@ -34,6 +37,9 @@ function repositories() {
   return { players: new PrismaPlayerRepository(prisma), rooms: new PrismaRoomRepository(prisma) };
 }
 
+/** Stateless and built from code, so each composition root can safely have its own. Throws on invalid content. */
+const caseCatalog = () => new StaticCaseCatalog(ALL_CASES);
+
 export function buildHttpContainer() {
   const { players, rooms } = repositories();
   return {
@@ -41,6 +47,7 @@ export function buildHttpContainer() {
     createRoom: new CreateRoom(rooms, new CryptoRoomCodeGenerator(), ids, clock),
     joinRoom: new JoinRoom(rooms, clock),
     checkRoomAccess: new CheckRoomAccess(rooms),
+    cases: caseCatalog(),
   };
 }
 export type HttpContainer = ReturnType<typeof buildHttpContainer>;
@@ -56,14 +63,17 @@ export function buildRealtimeContainer() {
   const { players, rooms } = repositories();
   const presence = new InMemoryPresenceTracker();
   const sessions = new PrismaGameSessionRepository(getPrisma());
+  const cases = caseCatalog();
+  const game = { rooms, sessions, cases };
   return {
     presence,
     getLobbyView: new GetLobbyView(rooms, players, presence),
     chooseRole: new ChooseRole(rooms),
     setReady: new SetReady(rooms),
-    startCase: new StartCase(rooms, sessions),
-    getGameView: new GetGameView(rooms, sessions),
-    performGameAction: new PerformGameAction(rooms, sessions),
+    selectCase: new SelectCase(rooms, cases),
+    startCase: new StartCase(game),
+    getGameView: new GetGameView(game),
+    performGameAction: new PerformGameAction(game),
     leaveRoom: new LeaveRoom(rooms),
   };
 }

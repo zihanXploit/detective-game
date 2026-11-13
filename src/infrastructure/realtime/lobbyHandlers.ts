@@ -4,6 +4,7 @@ import { parseRoomCode } from "@/domain/room/RoomCode";
 import type { RealtimeContainer } from "@/infrastructure/container";
 import {
   lobbyChooseRoleSchema,
+  lobbySelectCaseSchema,
   lobbyJoinSchema,
   lobbySetReadySchema,
   noPayloadSchema,
@@ -65,6 +66,13 @@ export function registerLobbyHandlers(
         if (!state) throw roomNotFound();
         return state;
       },
+    ),
+  );
+
+  socket.on(
+    "lobby:selectCase",
+    mutation(lobbySelectCaseSchema, (code, { caseSlug }) =>
+      deps.selectCase.execute({ code, playerId, caseSlug }),
     ),
   );
 

@@ -33,6 +33,8 @@ export interface RoomProps {
   code: RoomCode;
   status: RoomStatus;
   hostId: string;
+  /** The case the host picked for this room, if any yet. */
+  caseSlug: string | null;
   members: RoomMember[];
 }
 
@@ -42,6 +44,7 @@ export class Room {
   readonly code: RoomCode;
   private currentStatus: RoomStatus;
   private currentHostId: string;
+  private currentCaseSlug: string | null;
   private memberList: RoomMember[];
 
   constructor(props: RoomProps) {
@@ -49,6 +52,7 @@ export class Room {
     this.code = props.code;
     this.currentStatus = props.status;
     this.currentHostId = props.hostId;
+    this.currentCaseSlug = props.caseSlug;
     this.memberList = [...props.members].sort((a, b) => a.seat - b.seat);
   }
 
@@ -58,8 +62,13 @@ export class Room {
       code: args.code,
       status: "LOBBY",
       hostId: args.hostId,
+      caseSlug: null,
       members: [{ playerId: args.hostId, seat: 0, role: null, isReady: false, joinedAt: args.now }],
     });
+  }
+
+  get caseSlug(): string | null {
+    return this.currentCaseSlug;
   }
 
   get status(): RoomStatus {
@@ -95,6 +104,7 @@ export class Room {
     const roles = new Set(this.memberList.map((m) => m.role));
     return (
       this.currentStatus === "LOBBY" &&
+      this.currentCaseSlug !== null &&
       this.isFull &&
       this.memberList.every((m) => m.isReady && m.role !== null) &&
       roles.size === this.memberList.length
@@ -135,6 +145,19 @@ export class Room {
     const member = this.lobbyMember(playerId);
     if (isReady && member.role === null) throw roleRequired();
     return this.replace({ ...member, isReady });
+  }
+
+  /**
+   * The host's choice of case. Switching to a different case withdraws everyone's
+   * readiness: they agreed to play the old one. The caller must check the case exists.
+   */
+  selectCase(playerId: string, caseSlug: string): void {
+    this.lobbyMember(playerId);
+    if (playerId !== this.currentHostId) throw notHost();
+    if (caseSlug === this.currentCaseSlug) return;
+
+    this.currentCaseSlug = caseSlug;
+    this.memberList = this.memberList.map((m) => ({ ...m, isReady: false }));
   }
 
   /** Frees the seat. If the host walks out, the remaining player inherits the room. */

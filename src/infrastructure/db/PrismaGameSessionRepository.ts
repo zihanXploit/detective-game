@@ -16,10 +16,19 @@ const stateSchema: z.ZodType<GameState> = z.object({
   players: z.object({ A: playerSchema, B: playerSchema }),
 });
 
-const select = { id: true, state: true, stateVersion: true } as const;
+const select = { id: true, caseSlug: true, caseVersion: true, state: true, stateVersion: true } as const;
 
-const toStored = (row: { id: string; state: Prisma.JsonValue; stateVersion: number }): StoredGameSession => ({
+interface SessionRow {
+  id: string;
+  caseSlug: string;
+  caseVersion: number;
+  state: Prisma.JsonValue;
+  stateVersion: number;
+}
+
+const toStored = (row: SessionRow): StoredGameSession => ({
   id: row.id,
+  caseRef: { slug: row.caseSlug, version: row.caseVersion },
   state: stateSchema.parse(row.state),
   version: row.stateVersion,
 });
