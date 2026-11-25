@@ -26,7 +26,14 @@ const stateSchema: z.ZodType<GameState, z.ZodTypeDef, unknown> = z.object({
   puzzles: z.record(puzzleProgressSchema).default({}),
 });
 
-const select = { id: true, caseSlug: true, caseVersion: true, state: true, stateVersion: true } as const;
+const select = {
+  id: true,
+  caseSlug: true,
+  caseVersion: true,
+  state: true,
+  stateVersion: true,
+  completedAt: true,
+} as const;
 
 interface SessionRow {
   id: string;
@@ -34,6 +41,7 @@ interface SessionRow {
   caseVersion: number;
   state: Prisma.JsonValue;
   stateVersion: number;
+  completedAt: Date | null;
 }
 
 const toStored = (row: SessionRow): StoredGameSession => ({
@@ -41,6 +49,7 @@ const toStored = (row: SessionRow): StoredGameSession => ({
   caseRef: { slug: row.caseSlug, version: row.caseVersion },
   state: stateSchema.parse(row.state),
   version: row.stateVersion,
+  completedAt: row.completedAt,
 });
 
 const toJson = (state: GameState) => state as unknown as Prisma.InputJsonValue;
@@ -48,8 +57,13 @@ const toJson = (state: GameState) => state as unknown as Prisma.InputJsonValue;
 export class PrismaGameSessionRepository implements GameSessionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findActiveByRoom(roomId: string): Promise<StoredGameSession | null> {
-    const row = await this.prisma.gameSession.findFirst({ where: { roomId, status: "ACTIVE" }, select });
+  async findCurrentByRoom(roomId: string): Promise<StoredGameSession | null> {
+    // Whatever its status: a finished case is still the one this room is on.
+    const row = await this.prisma.gameSession.findFirst({
+      where: { roomId },
+      orderBy: { startedAt: "desc" },
+      select,
+    });
     return row ? toStored(row) : null;
   }
 
@@ -77,5 +91,17 @@ export class PrismaGameSessionRepository implements GameSessionRepository {
       data: { state: toJson(state), stateVersion: { increment: 1 } },
     });
     return count === 1;
+  }
+
+  async complete(id: string): Promise<void> {
+    // Only the first call stamps a time, so a replay cannot move the finishing line.
+    await this.prisma.gameSession.updateMany({
+      where: { id, completedAt: null },
+      data: { status: "COMPLETED", completedAt: new Date() },
+    });
+  }
+
+  async recordCaseVersion(id: string, version: number): Promise<void> {
+    await this.prisma.gameSession.updateMany({ where: { id }, data: { caseVersion: version } });
   }
 }

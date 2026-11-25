@@ -14,7 +14,9 @@ import { SetReady } from "@/application/use-cases/SetReady";
 import { SelectCase } from "@/application/use-cases/SelectCase";
 import { ALL_CASES } from "@/content/cases";
 import { StaticCaseCatalog } from "./content/StaticCaseCatalog";
+import { ListResumableRooms } from "@/application/use-cases/ListResumableRooms";
 import { PrismaGameSessionRepository } from "./db/PrismaGameSessionRepository";
+import { PrismaRoomDirectory } from "./db/PrismaRoomDirectory";
 import { PrismaPlayerRepository } from "./db/PrismaPlayerRepository";
 import { PrismaRoomRepository } from "./db/PrismaRoomRepository";
 import { getPrisma } from "./db/prisma";
@@ -47,6 +49,7 @@ export function buildHttpContainer() {
     createRoom: new CreateRoom(rooms, new CryptoRoomCodeGenerator(), ids, clock),
     joinRoom: new JoinRoom(rooms, clock),
     checkRoomAccess: new CheckRoomAccess(rooms),
+    listResumableRooms: new ListResumableRooms(new PrismaRoomDirectory(getPrisma()), caseCatalog()),
     cases: caseCatalog(),
   };
 }

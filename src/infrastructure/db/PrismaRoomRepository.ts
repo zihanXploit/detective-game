@@ -103,6 +103,10 @@ export class PrismaRoomRepository implements RoomRepository {
     ]);
   }
 
+  async markCompleted(roomId: string): Promise<void> {
+    await this.prisma.room.updateMany({ where: { id: roomId }, data: { status: "COMPLETED" } });
+  }
+
   async markStarted(roomId: string): Promise<boolean> {
     const { count } = await this.prisma.room.updateMany({
       where: { id: roomId, status: "LOBBY" },
