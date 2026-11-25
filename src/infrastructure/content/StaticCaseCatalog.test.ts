@@ -17,6 +17,16 @@ const sample = (slug: string): CaseDefinition => ({
     { id: "a-one", heldBy: "A", name: "A's item", summary: "A summary.", details: ["A details."] },
     { id: "b-one", heldBy: "B", name: "B's item", summary: "B summary.", details: ["B details."] },
   ],
+  puzzles: [
+    {
+      id: "both-sides",
+      name: "Together",
+      prompt: "Needs both of you.",
+      requires: ["a-one", "b-one"],
+      check: { kind: "exact-text", accept: ["yes"] },
+      hints: [],
+    },
+  ],
 });
 
 describe("StaticCaseCatalog", () => {
