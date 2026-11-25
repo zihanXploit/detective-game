@@ -10,6 +10,8 @@ export const noPayloadSchema = z.object({}).strict();
 export const gameActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ACKNOWLEDGE_BRIEFING") }).strict(),
   z.object({ type: z.literal("UPDATE_NOTEBOOK"), text: z.string().max(8000) }).strict(),
+  z.object({ type: z.literal("EXAMINE_EVIDENCE"), evidenceId: z.string().max(64) }).strict(),
+  z.object({ type: z.literal("SHARE_EVIDENCE"), evidenceId: z.string().max(64) }).strict(),
 ]);
 
 /** Body of the create-room and join-room HTTP endpoints. Real name rules are enforced in the domain. */

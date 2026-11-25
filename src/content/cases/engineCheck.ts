@@ -6,7 +6,7 @@ import type { CaseDefinition } from "@/domain/case/CaseDefinition";
  */
 export const engineCheck: CaseDefinition = {
   slug: "engine-check",
-  version: 1,
+  version: 2,
   title: "Engine Check (test case)",
   synopsis: "A content-free test case for trying out the game. There is no mystery to solve here.",
   estimatedMinutes: 2,
@@ -28,4 +28,40 @@ export const engineCheck: CaseDefinition = {
       ],
     },
   },
+  evidence: [
+    {
+      id: "one-first-item",
+      heldBy: "A",
+      name: "Test item One-1",
+      summary: "Placeholder summary for Tester One's first item.",
+      details: [
+        "Placeholder details for Tester One's first item. Only Tester One ever receives this text.",
+        "If you share this item, your partner sees its name and summary. Read these details aloud to pass them on.",
+      ],
+    },
+    {
+      id: "one-second-item",
+      heldBy: "A",
+      name: "Test item One-2",
+      summary: "Placeholder summary for Tester One's second item.",
+      details: ["Placeholder details for Tester One's second item."],
+    },
+    {
+      id: "two-first-item",
+      heldBy: "B",
+      name: "Test item Two-1",
+      summary: "Placeholder summary for Tester Two's first item.",
+      details: [
+        "Placeholder details for Tester Two's first item. Only Tester Two ever receives this text.",
+        "If you share this item, your partner sees its name and summary. Read these details aloud to pass them on.",
+      ],
+    },
+    {
+      id: "two-second-item",
+      heldBy: "B",
+      name: "Test item Two-2",
+      summary: "Placeholder summary for Tester Two's second item.",
+      details: ["Placeholder details for Tester Two's second item."],
+    },
+  ],
 };

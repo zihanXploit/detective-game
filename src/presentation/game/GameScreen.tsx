@@ -3,6 +3,7 @@
 import { Button, ErrorNote } from "@/presentation/components/ui";
 import type { RoomSocket } from "@/presentation/lobby/useLobby";
 import type { CaseFileView, PlayerGameView } from "@/shared/realtime/contract";
+import { EvidencePanel } from "./EvidencePanel";
 import { Notebook } from "./Notebook";
 import { useGame } from "./useGame";
 
@@ -67,6 +68,16 @@ export function GameScreen({ socket, connected }: { socket: RoomSocket | null; c
 
       <ErrorNote message={error} />
       <Briefing caseFile={caseFile} />
+
+      {!inBriefing && (
+        <EvidencePanel
+          yours={view.evidence.yours}
+          fromPartner={view.evidence.fromPartner}
+          partnerRoleName={caseFile.partnerRoleName}
+          disabled={!connected}
+          act={act}
+        />
+      )}
 
       {inBriefing && (
         <>
