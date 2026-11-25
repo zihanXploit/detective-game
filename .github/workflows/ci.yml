@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+  # So the workflow can be tried from the Actions tab before a pull request exists.
+  workflow_dispatch:
+
+# A new push to the same branch makes the previous run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Nothing here reaches a database: the app reads its configuration lazily and
+      # every page that queries one is rendered per request, not at build time.
+      # These exist only so configuration validation has something valid to read.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      SESSION_SECRET: continuous-integration-placeholder-secret-value
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The typecheck needs the generated Prisma client. Its postinstall hook
+      # usually produces it, but whether lifecycle scripts run varies by npm
+      # version, so ask for it outright. Generating twice costs a second.
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
