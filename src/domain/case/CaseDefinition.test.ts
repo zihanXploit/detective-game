@@ -11,6 +11,10 @@ const valid = (): CaseDefinition => ({
     A: { name: "First", summary: "Goes first.", briefing: ["ONLY-A-MAY-READ-THIS"] },
     B: { name: "Second", summary: "Goes second.", briefing: ["ONLY-B-MAY-READ-THIS"] },
   },
+  evidence: [
+    { id: "a-one", heldBy: "A", name: "A's item", summary: "A summary.", details: ["A details."] },
+    { id: "b-one", heldBy: "B", name: "B's item", summary: "B summary.", details: ["B details."] },
+  ],
 });
 
 describe("validateCase", () => {
@@ -34,6 +38,23 @@ describe("validateCase", () => {
     expect(problems).toHaveLength(8);
     expect(problems.join("\n")).toMatch(/slug/);
     expect(problems.join("\n")).toMatch(/both roles have the same name/);
+  });
+
+  it("reports malformed, duplicated and one-sided evidence", () => {
+    const problems = validateCase({
+      ...valid(),
+      evidence: [
+        { id: "Bad Id", heldBy: "A", name: "", summary: " ", details: [] },
+        { id: "a-one", heldBy: "A", name: "First", summary: "ok", details: ["x"] },
+        { id: "a-one", heldBy: "A", name: "Copy", summary: "ok", details: [" "] },
+      ],
+    }).join("\n");
+
+    expect(problems).toMatch(/evidence "Bad Id": id must be lowercase/);
+    expect(problems).toMatch(/has no name/);
+    expect(problems).toMatch(/id is used by more than one item/);
+    expect(problems).toMatch(/empty details paragraph/);
+    expect(problems).toMatch(/role B has no evidence to find/);
   });
 });
 

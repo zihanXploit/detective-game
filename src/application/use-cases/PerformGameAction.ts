@@ -20,7 +20,7 @@ export class PerformGameAction {
   async execute(input: { code: string; playerId: string; action: GameAction }): Promise<PlayerViewUpdate[]> {
     const { session, definition, role } = await loadGame(this.deps, input);
 
-    const next = applyAction(session.state, role, input.action);
+    const next = applyAction(definition, session.state, role, input.action);
     const saved = await this.deps.sessions.save(session.id, next, session.version);
     if (!saved) throw stateConflict();
 

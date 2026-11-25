@@ -62,5 +62,5 @@ export async function loadGame(deps: GameDeps, input: { code: string; playerId: 
 
 /** Everything one player may see: their side of the state plus their side of the case. */
 export function buildPlayerView(definition: CaseDefinition, state: GameState, role: PlayerRole): PlayerGameView {
-  return { ...projectFor(state, role), caseFile: caseFileFor(definition, role) };
+  return { ...projectFor(definition, state, role), caseFile: caseFileFor(definition, role) };
 }
