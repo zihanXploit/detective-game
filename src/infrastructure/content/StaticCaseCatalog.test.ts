@@ -13,6 +13,10 @@ const sample = (slug: string): CaseDefinition => ({
     A: { name: "First", summary: "Goes first.", briefing: ["a"] },
     B: { name: "Second", summary: "Goes second.", briefing: ["b"] },
   },
+  evidence: [
+    { id: "a-one", heldBy: "A", name: "A's item", summary: "A summary.", details: ["A details."] },
+    { id: "b-one", heldBy: "B", name: "B's item", summary: "B summary.", details: ["B details."] },
+  ],
 });
 
 describe("StaticCaseCatalog", () => {

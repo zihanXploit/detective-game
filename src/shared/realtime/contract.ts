@@ -57,11 +57,29 @@ export interface RoomStateEnvelope {
 
 export type GamePhaseView = "BRIEFING" | "INVESTIGATION";
 
+/** One of the player's own items. Content arrives only once they examine it. */
+export interface OwnEvidenceItemView {
+  id: string;
+  name: string;
+  examined: boolean;
+  shared: boolean;
+  summary: string | null;
+  details: readonly string[] | null;
+}
+
+/** An item the partner handed over. It has no details: those have to be said out loud. */
+export interface SharedEvidenceItemView {
+  id: string;
+  name: string;
+  summary: string;
+}
+
 /** One player's view of the game. Built per player on the server; never broadcast to the room. */
 export interface PlayerGameView {
   phase: GamePhaseView;
   you: { role: PlayerRoleView; briefingAcknowledged: boolean; notebook: string };
-  partner: { role: PlayerRoleView; briefingAcknowledged: boolean };
+  partner: { role: PlayerRoleView; briefingAcknowledged: boolean; sharedCount: number };
+  evidence: { yours: OwnEvidenceItemView[]; fromPartner: SharedEvidenceItemView[] };
   caseFile: CaseFileView;
 }
 
@@ -72,7 +90,9 @@ export interface GameStateEnvelope {
 
 export type GameActionPayload =
   | { type: "ACKNOWLEDGE_BRIEFING" }
-  | { type: "UPDATE_NOTEBOOK"; text: string };
+  | { type: "UPDATE_NOTEBOOK"; text: string }
+  | { type: "EXAMINE_EVIDENCE"; evidenceId: string }
+  | { type: "SHARE_EVIDENCE"; evidenceId: string };
 
 export type Result<T> =
   | { ok: true; data: T }

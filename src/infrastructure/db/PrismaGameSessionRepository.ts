@@ -8,10 +8,13 @@ const playerSchema = z.object({
   playerId: z.string(),
   briefingAcknowledged: z.boolean(),
   notebook: z.string(),
+  // Defaulted so saves written before a field existed still load.
+  examined: z.array(z.string()).default([]),
+  shared: z.array(z.string()).default([]),
 });
 
-/** Saved state is JSON, so it is checked on the way out: a corrupt or outdated row fails loudly here. */
-const stateSchema: z.ZodType<GameState> = z.object({
+/** Saved state is JSON, so it is checked on the way out: a corrupt or unreadable row fails loudly here. */
+const stateSchema: z.ZodType<GameState, z.ZodTypeDef, unknown> = z.object({
   phase: z.enum(["BRIEFING", "INVESTIGATION"]),
   players: z.object({ A: playerSchema, B: playerSchema }),
 });
