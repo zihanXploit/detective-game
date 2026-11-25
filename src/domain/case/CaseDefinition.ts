@@ -1,3 +1,4 @@
+import { validatePuzzle, type PuzzleDefinition } from "@/domain/puzzle/PuzzleDefinition";
 import type { PlayerRole } from "@/domain/room/Room";
 
 /**
@@ -45,6 +46,8 @@ export interface CaseDefinition {
   estimatedMinutes: number;
   roles: Record<PlayerRole, CaseRoleDefinition>;
   evidence: readonly EvidenceDefinition[];
+  /** Solving all of them closes the case. Their `check` content stays on the server. */
+  puzzles: readonly PuzzleDefinition[];
 }
 
 /** What anyone may know about a case before playing it. */
@@ -71,6 +74,10 @@ export function evidenceHeldBy(definition: CaseDefinition, role: PlayerRole): re
 
 export function findEvidence(definition: CaseDefinition, id: string): EvidenceDefinition | undefined {
   return definition.evidence.find((item) => item.id === id);
+}
+
+export function findPuzzle(definition: CaseDefinition, id: string): PuzzleDefinition | undefined {
+  return definition.puzzles.find((puzzle) => puzzle.id === id);
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -131,6 +138,26 @@ export function validateCase(definition: CaseDefinition): string[] {
     if (!definition.evidence.some((item) => item.heldBy === role)) {
       problems.push(`role ${role} has no evidence to find`);
     }
+  }
+
+  const heldBy = new Map(definition.evidence.map((item) => [item.id, item.heldBy]));
+  const seenPuzzleIds = new Set<string>();
+  for (const puzzle of definition.puzzles) {
+    for (const problem of validatePuzzle(puzzle, new Set(heldBy.keys()))) problems.push(problem);
+    if (seenPuzzleIds.has(puzzle.id)) problems.push(`puzzle "${puzzle.id}": id is used by more than one puzzle`);
+    seenPuzzleIds.add(puzzle.id);
+  }
+
+  if (definition.puzzles.length === 0) {
+    problems.push("the case has no puzzles, so it can never be closed");
+  } else if (
+    // The whole premise is that neither player can finish alone.
+    !definition.puzzles.some((puzzle) => {
+      const sides = new Set(puzzle.requires.map((id) => heldBy.get(id)));
+      return sides.has("A") && sides.has("B");
+    })
+  ) {
+    problems.push("no puzzle needs evidence from both roles, so the case can be solved by one player");
   }
   return problems;
 }

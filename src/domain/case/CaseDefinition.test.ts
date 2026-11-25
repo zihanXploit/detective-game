@@ -15,6 +15,16 @@ const valid = (): CaseDefinition => ({
     { id: "a-one", heldBy: "A", name: "A's item", summary: "A summary.", details: ["A details."] },
     { id: "b-one", heldBy: "B", name: "B's item", summary: "B summary.", details: ["B details."] },
   ],
+  puzzles: [
+    {
+      id: "both-sides",
+      name: "Together",
+      prompt: "Needs both of you.",
+      requires: ["a-one", "b-one"],
+      check: { kind: "exact-text", accept: ["yes"] },
+      hints: [],
+    },
+  ],
 });
 
 describe("validateCase", () => {
@@ -55,6 +65,48 @@ describe("validateCase", () => {
     expect(problems).toMatch(/id is used by more than one item/);
     expect(problems).toMatch(/empty details paragraph/);
     expect(problems).toMatch(/role B has no evidence to find/);
+  });
+
+  it("reports malformed puzzles and unknown requirements", () => {
+    const problems = validateCase({
+      ...valid(),
+      puzzles: [
+        {
+          id: "Bad Id",
+          name: "",
+          prompt: " ",
+          requires: ["a-one", "a-one", "ghost"],
+          check: { kind: "exact-text", accept: [] },
+          hints: [" "],
+        },
+      ],
+    }).join("\n");
+
+    expect(problems).toMatch(/puzzle "Bad Id": id must be lowercase/);
+    expect(problems).toMatch(/has no name/);
+    expect(problems).toMatch(/requires unknown evidence "ghost"/);
+    expect(problems).toMatch(/lists the same required evidence twice/);
+    expect(problems).toMatch(/accept must list at least one answer/);
+    expect(problems).toMatch(/has an empty hint/);
+  });
+
+  it("refuses a case that one player could finish alone", () => {
+    const oneSided = validateCase({
+      ...valid(),
+      puzzles: [
+        {
+          id: "solo",
+          name: "Solo",
+          prompt: "One side only.",
+          requires: ["a-one"],
+          check: { kind: "exact-text", accept: ["yes"] },
+          hints: [],
+        },
+      ],
+    });
+    expect(oneSided.join("\n")).toMatch(/no puzzle needs evidence from both roles/);
+
+    expect(validateCase({ ...valid(), puzzles: [] }).join("\n")).toMatch(/no puzzles/);
   });
 });
 

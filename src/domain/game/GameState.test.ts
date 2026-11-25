@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CaseDefinition } from "@/domain/case/CaseDefinition";
 import { isDomainError } from "@/domain/errors";
 import {
+  ANSWER_MAX_LENGTH,
   applyAction,
   createInitialState,
   NOTEBOOK_MAX_LENGTH,
@@ -24,6 +25,25 @@ const testCase: CaseDefinition = {
     { id: "a-one", heldBy: "A", name: "A's first", summary: "A-SUMMARY", details: ["A-DETAILS"] },
     { id: "a-two", heldBy: "A", name: "A's second", summary: "A2-SUMMARY", details: ["A2-DETAILS"] },
     { id: "b-one", heldBy: "B", name: "B's first", summary: "B-SUMMARY", details: ["B-DETAILS"] },
+  ],
+  puzzles: [
+    {
+      id: "needs-both",
+      name: "Needs both",
+      prompt: "Pool what you have.",
+      requires: ["a-one", "b-one"],
+      check: { kind: "exact-text", accept: ["together"] },
+      hints: ["HINT-ONE", "HINT-TWO"],
+      solvedNote: "SOLVED-NOTE",
+    },
+    {
+      id: "needs-a-only",
+      name: "Needs A only",
+      prompt: "One side is enough.",
+      requires: ["a-two"],
+      check: { kind: "number", value: 42 },
+      hints: [],
+    },
   ],
 };
 
@@ -188,5 +208,97 @@ describe("projectFor", () => {
   it("ignores a shared id that the case no longer defines", () => {
     const edited: CaseDefinition = { ...testCase, evidence: testCase.evidence.filter((e) => e.id !== "a-one") };
     expect(projectFor(edited, played, "B").evidence.fromPartner).toEqual([]);
+  });
+});
+
+describe("puzzles", () => {
+  /** Both required items examined, so "needs-both" is open. */
+  const unlocked = () => {
+    const once = act(investigating(), "A", { type: "EXAMINE_EVIDENCE", evidenceId: "a-one" });
+    return act(once, "B", { type: "EXAMINE_EVIDENCE", evidenceId: "b-one" });
+  };
+  const puzzleView = (state: GameState, role: "A" | "B", id: string) =>
+    projectFor(testCase, state, role).puzzles.find((p) => p.id === id)!;
+
+  it("stays shut until the evidence it needs has been examined", () => {
+    const fresh = investigating();
+    expect(puzzleView(fresh, "A", "needs-both").unlocked).toBe(false);
+    expect(codeOf(() => act(fresh, "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: "together" })))
+      .toBe("INVALID_ACTION");
+    expect(codeOf(() => act(fresh, "A", { type: "REVEAL_HINT", puzzleId: "needs-both" }))).toBe("INVALID_ACTION");
+
+    expect(puzzleView(unlocked(), "A", "needs-both").unlocked).toBe(true);
+  });
+
+  it("names your own missing items but only counts your partner's", () => {
+    const halfway = act(investigating(), "A", { type: "EXAMINE_EVIDENCE", evidenceId: "a-one" });
+    const forAlice = puzzleView(halfway, "A", "needs-both");
+    expect(forAlice.blockedBy).toEqual({ yours: [], partnerItems: 1 });
+
+    const forBob = puzzleView(halfway, "B", "needs-both");
+    expect(forBob.blockedBy).toEqual({ yours: ["B's first"], partnerItems: 0 });
+    // The count must not come with the partner's item name attached.
+    expect(JSON.stringify(forAlice)).not.toContain("B's first");
+  });
+
+  it("treats a requirement the case no longer defines as met", () => {
+    const edited: CaseDefinition = { ...testCase, evidence: testCase.evidence.filter((e) => e.id !== "b-one") };
+    const state = act(investigating(), "A", { type: "EXAMINE_EVIDENCE", evidenceId: "a-one" });
+    expect(projectFor(edited, state, "A").puzzles[0]?.unlocked).toBe(true);
+  });
+
+  it("counts a wrong answer without solving anything", () => {
+    const state = act(unlocked(), "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: "apart" });
+    expect(puzzleView(state, "A", "needs-both")).toMatchObject({ attempts: 1, solved: false });
+    expect(state.phase).toBe("INVESTIGATION");
+  });
+
+  it("accepts a right answer from either player and shows both the same progress", () => {
+    const state = act(unlocked(), "B", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: " Together " });
+    expect(puzzleView(state, "A", "needs-both")).toMatchObject({ solved: true, attempts: 1, solvedNote: "SOLVED-NOTE" });
+    expect(puzzleView(state, "B", "needs-both")).toEqual(puzzleView(state, "A", "needs-both"));
+  });
+
+  it("never puts the solution in a player's view", () => {
+    const open = JSON.stringify(projectFor(testCase, unlocked(), "A"));
+    expect(open).toContain("Pool what you have.");
+    expect(open).not.toContain("together");
+    expect(open).not.toContain("accept");
+    expect(open).not.toContain("42");
+  });
+
+  it("refuses a second answer once solved, and an unknown puzzle id", () => {
+    const solved = act(unlocked(), "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: "together" });
+    expect(codeOf(() => act(solved, "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: "together" })))
+      .toBe("INVALID_ACTION");
+    expect(codeOf(() => act(solved, "A", { type: "SUBMIT_ANSWER", puzzleId: "ghost", answer: "x" })))
+      .toBe("INVALID_ACTION");
+  });
+
+  it("caps the length of an answer", () => {
+    const tooLong = "x".repeat(ANSWER_MAX_LENGTH + 1);
+    expect(codeOf(() => act(unlocked(), "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: tooLong })))
+      .toBe("INVALID_ACTION");
+  });
+
+  it("reveals hints one at a time and then runs out", () => {
+    let state = unlocked();
+    expect(puzzleView(state, "A", "needs-both")).toMatchObject({ hints: [], hintsRemaining: 2 });
+
+    state = act(state, "A", { type: "REVEAL_HINT", puzzleId: "needs-both" });
+    expect(puzzleView(state, "B", "needs-both")).toMatchObject({ hints: ["HINT-ONE"], hintsRemaining: 1 });
+
+    state = act(state, "B", { type: "REVEAL_HINT", puzzleId: "needs-both" });
+    expect(puzzleView(state, "A", "needs-both").hints).toEqual(["HINT-ONE", "HINT-TWO"]);
+    expect(codeOf(() => act(state, "A", { type: "REVEAL_HINT", puzzleId: "needs-both" }))).toBe("INVALID_ACTION");
+  });
+
+  it("closes the case once every puzzle is solved", () => {
+    let state = act(unlocked(), "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-both", answer: "together" });
+    expect(state.phase).toBe("INVESTIGATION");
+
+    state = act(state, "A", { type: "EXAMINE_EVIDENCE", evidenceId: "a-two" });
+    state = act(state, "A", { type: "SUBMIT_ANSWER", puzzleId: "needs-a-only", answer: "42" });
+    expect(state.phase).toBe("RESOLVED");
   });
 });
