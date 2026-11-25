@@ -1,7 +1,7 @@
 import type { CaseDefinition, CaseSummary } from "@/domain/case/CaseDefinition";
 import type { GameState } from "@/domain/game/GameState";
 import type { Player } from "@/domain/player/Player";
-import type { Room, RoomMember } from "@/domain/room/Room";
+import type { Room, RoomMember, RoomStatus } from "@/domain/room/Room";
 import type { RoomCode } from "@/domain/room/RoomCode";
 
 export interface PlayerRepository {
@@ -28,6 +28,8 @@ export interface RoomRepository {
   markStarted(roomId: string): Promise<boolean>;
   /** Persists the room's chosen case together with every member's readiness. */
   saveCaseSelection(room: Room): Promise<void>;
+  /** Moves the room to COMPLETED. Safe to call more than once. */
+  markCompleted(roomId: string): Promise<void>;
 }
 
 /** The cases available to play. Synchronous: case content ships with the app. */
@@ -48,14 +50,39 @@ export interface StoredGameSession {
   state: GameState;
   /** Bumped on every save; pass it back to `save` to detect a concurrent writer. */
   version: number;
+  completedAt: Date | null;
 }
 
 export interface GameSessionRepository {
-  findActiveByRoom(roomId: string): Promise<StoredGameSession | null>;
+  /**
+   * The room's game, finished or not. It must not filter by status: a finished
+   * case is still the one a pair come back to, and skipping it would silently
+   * start them a second game.
+   */
+  findCurrentByRoom(roomId: string): Promise<StoredGameSession | null>;
   /** Idempotent per room and case: returns the existing session if one was created concurrently. */
   create(roomId: string, caseRef: CaseRef, state: GameState): Promise<StoredGameSession>;
   /** Writes only if the stored version still equals `expectedVersion`. Returns false otherwise. */
   save(id: string, state: GameState, expectedVersion: number): Promise<boolean>;
+  /** Marks the case closed. Idempotent: a session already closed keeps its first timestamp. */
+  complete(id: string): Promise<void>;
+  /** Records which version of the case's content this save is now being played against. */
+  recordCaseVersion(id: string, version: number): Promise<void>;
+}
+
+/** One line in a player's list of rooms to come back to. */
+export interface RoomListEntry {
+  code: string;
+  status: RoomStatus;
+  caseSlug: string | null;
+  /** The other player's name, if a seat is taken. */
+  partnerName: string | null;
+  lastActiveAt: Date;
+}
+
+/** A read model: the rooms one player can return to, newest first. */
+export interface RoomDirectory {
+  listForPlayer(playerId: string, limit: number): Promise<RoomListEntry[]>;
 }
 
 export interface RoomCodeGenerator {
