@@ -5,10 +5,12 @@ import { createRoom, joinRoom } from "@/presentation/api/roomsApi";
 import { Button, Card, ErrorNote, TextField, Wordmark } from "@/presentation/components/ui";
 import { useDisplayName } from "@/presentation/hooks/useDisplayName";
 import { useRoomEntry } from "@/presentation/hooks/useRoomEntry";
+import type { ResumableRoom } from "@/application/use-cases/ListResumableRooms";
+import { ResumeList } from "./ResumeList";
 
 const CODE_LENGTH = 6;
 
-export function HomeScreen() {
+export function HomeScreen({ resumable }: { resumable: readonly ResumableRoom[] }) {
   const { name, setName, remember } = useDisplayName();
   const [code, setCode] = useState("");
   const { pending, error, enter } = useRoomEntry<"create" | "join">();
@@ -30,6 +32,7 @@ export function HomeScreen() {
   return (
     <>
       <Wordmark />
+      <ResumeList rooms={resumable} />
       <Card className="space-y-6">
         <TextField
           id="display-name"
