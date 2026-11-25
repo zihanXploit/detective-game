@@ -14,9 +14,16 @@ const playerSchema = z.object({
 });
 
 /** Saved state is JSON, so it is checked on the way out: a corrupt or unreadable row fails loudly here. */
+const puzzleProgressSchema = z.object({
+  attempts: z.number().int().nonnegative(),
+  solved: z.boolean(),
+  hintsRevealed: z.number().int().nonnegative(),
+});
+
 const stateSchema: z.ZodType<GameState, z.ZodTypeDef, unknown> = z.object({
-  phase: z.enum(["BRIEFING", "INVESTIGATION"]),
+  phase: z.enum(["BRIEFING", "INVESTIGATION", "RESOLVED"]),
   players: z.object({ A: playerSchema, B: playerSchema }),
+  puzzles: z.record(puzzleProgressSchema).default({}),
 });
 
 const select = { id: true, caseSlug: true, caseVersion: true, state: true, stateVersion: true } as const;

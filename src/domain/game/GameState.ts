@@ -1,5 +1,12 @@
-import { evidenceHeldBy, findEvidence, type CaseDefinition } from "@/domain/case/CaseDefinition";
+import {
+  evidenceHeldBy,
+  findEvidence,
+  findPuzzle,
+  type CaseDefinition,
+} from "@/domain/case/CaseDefinition";
 import { invalidAction, notRoomMember } from "@/domain/errors";
+import { isAnswerCorrect } from "@/domain/puzzle/checkers";
+import type { PuzzleDefinition } from "@/domain/puzzle/PuzzleDefinition";
 import type { PlayerRole } from "@/domain/room/Room";
 
 /**
@@ -12,13 +19,13 @@ import type { PlayerRole } from "@/domain/room/Room";
  * stay small and a corrected case reaches games already in progress.
  *
  * No I/O, no clock, no randomness, so every rule is unit-testable and a saved
- * state can always be replayed. Puzzles will extend the state and action types;
- * they must go through these same two functions.
+ * state can always be replayed.
  */
 
-export type GamePhase = "BRIEFING" | "INVESTIGATION";
+export type GamePhase = "BRIEFING" | "INVESTIGATION" | "RESOLVED";
 
 export const NOTEBOOK_MAX_LENGTH = 4000;
+export const ANSWER_MAX_LENGTH = 200;
 
 /** Everything the server knows about one side of the case. Never sent to the other side as-is. */
 export interface PlayerGameState {
@@ -32,16 +39,27 @@ export interface PlayerGameState {
   shared: string[];
 }
 
+/** Progress on one puzzle. Shared: both players see the same numbers. */
+export interface PuzzleProgress {
+  attempts: number;
+  solved: boolean;
+  hintsRevealed: number;
+}
+
 export interface GameState {
   phase: GamePhase;
   players: Record<PlayerRole, PlayerGameState>;
+  /** Keyed by puzzle id, and sparse: an untouched puzzle has no entry. */
+  puzzles: Record<string, PuzzleProgress>;
 }
 
 export type GameAction =
   | { type: "ACKNOWLEDGE_BRIEFING" }
   | { type: "UPDATE_NOTEBOOK"; text: string }
   | { type: "EXAMINE_EVIDENCE"; evidenceId: string }
-  | { type: "SHARE_EVIDENCE"; evidenceId: string };
+  | { type: "SHARE_EVIDENCE"; evidenceId: string }
+  | { type: "SUBMIT_ANSWER"; puzzleId: string; answer: string }
+  | { type: "REVEAL_HINT"; puzzleId: string };
 
 /** One of this player's own items. Details arrive only once they examine it. */
 export interface OwnEvidenceView {
@@ -63,15 +81,37 @@ export interface SharedEvidenceView {
   summary: string;
 }
 
+/** A puzzle as one player sees it. Never carries anything derived from the solution. */
+export interface PuzzleView {
+  id: string;
+  name: string;
+  prompt: string;
+  unlocked: boolean;
+  solved: boolean;
+  attempts: number;
+  /** Only the hints that have been revealed, in order. */
+  hints: readonly string[];
+  hintsRemaining: number;
+  solvedNote: string | null;
+  /** Why it is still shut, from this player's side. Null once open. */
+  blockedBy: { yours: readonly string[]; partnerItems: number } | null;
+}
+
 /** One player's window onto the game: all of their own side, only the public part of their partner's. */
 export interface PlayerGameView {
   phase: GamePhase;
   you: { role: PlayerRole; briefingAcknowledged: boolean; notebook: string };
   partner: { role: PlayerRole; briefingAcknowledged: boolean; sharedCount: number };
   evidence: { yours: OwnEvidenceView[]; fromPartner: SharedEvidenceView[] };
+  puzzles: PuzzleView[];
 }
 
+const NO_PROGRESS: PuzzleProgress = { attempts: 0, solved: false, hintsRevealed: 0 };
+
 const otherRole = (role: PlayerRole): PlayerRole => (role === "A" ? "B" : "A");
+
+const progressOf = (state: GameState, puzzleId: string): PuzzleProgress =>
+  state.puzzles[puzzleId] ?? NO_PROGRESS;
 
 export function createInitialState(assignments: Record<PlayerRole, string>): GameState {
   const fresh = (playerId: string): PlayerGameState => ({
@@ -81,7 +121,11 @@ export function createInitialState(assignments: Record<PlayerRole, string>): Gam
     examined: [],
     shared: [],
   });
-  return { phase: "BRIEFING", players: { A: fresh(assignments.A), B: fresh(assignments.B) } };
+  return {
+    phase: "BRIEFING",
+    players: { A: fresh(assignments.A), B: fresh(assignments.B) },
+    puzzles: {},
+  };
 }
 
 export function roleOf(state: GameState, playerId: string): PlayerRole {
@@ -89,6 +133,26 @@ export function roleOf(state: GameState, playerId: string): PlayerRole {
   if (state.players.B.playerId === playerId) return "B";
   throw notRoomMember();
 }
+
+/**
+ * Required evidence still unexamined, split by who holds it. A requirement the
+ * case no longer defines is treated as met, so edited content cannot wedge a
+ * game that is already under way.
+ */
+function outstanding(definition: CaseDefinition, state: GameState, puzzle: PuzzleDefinition) {
+  const missing: Record<PlayerRole, string[]> = { A: [], B: [] };
+  for (const id of puzzle.requires) {
+    const item = findEvidence(definition, id);
+    if (!item) continue;
+    if (!state.players[item.heldBy].examined.includes(id)) missing[item.heldBy].push(item.name);
+  }
+  return missing;
+}
+
+const isUnlocked = (definition: CaseDefinition, state: GameState, puzzle: PuzzleDefinition) => {
+  const missing = outstanding(definition, state, puzzle);
+  return missing.A.length === 0 && missing.B.length === 0;
+};
 
 /** Returns a new state; the input is never mutated. Throws a DomainError when the action is not allowed. */
 export function applyAction(
@@ -103,18 +167,40 @@ export function applyAction(
     players: { ...state.players, [role]: { ...self, ...patch } },
   });
 
+  const requireInvestigation = () => {
+    if (state.phase === "BRIEFING") throw invalidAction("The investigation has not started yet.");
+  };
+
   /** Resolves an id to one of this role's own items, whatever a client claims. */
   const ownEvidence = (evidenceId: string) => {
-    if (state.phase !== "INVESTIGATION") throw invalidAction("The investigation has not started yet.");
+    requireInvestigation();
     const item = findEvidence(definition, evidenceId);
     // Same message either way: a player should not learn what sits on their partner's side.
     if (!item || item.heldBy !== role) throw invalidAction("That is not something you can look at.");
     return item;
   };
 
+  /** Resolves an id to a puzzle this pair may currently work on. */
+  const openPuzzle = (puzzleId: string) => {
+    requireInvestigation();
+    const puzzle = findPuzzle(definition, puzzleId);
+    if (!puzzle) throw invalidAction("There is no such question.");
+    if (progressOf(state, puzzle.id).solved) throw invalidAction("You have already answered that one.");
+    if (!isUnlocked(definition, state, puzzle)) {
+      throw invalidAction("You are both still missing something you need for that.");
+    }
+    return puzzle;
+  };
+
+  const withPuzzle = (puzzleId: string, patch: Partial<PuzzleProgress>): GameState => ({
+    ...state,
+    puzzles: { ...state.puzzles, [puzzleId]: { ...progressOf(state, puzzleId), ...patch } },
+  });
+
   switch (action.type) {
     case "ACKNOWLEDGE_BRIEFING": {
       if (state.phase !== "BRIEFING") throw invalidAction("The briefing is already over.");
+      if (self.briefingAcknowledged) return state;
       const next = withPlayer({ briefingAcknowledged: true });
       const bothIn = next.players.A.briefingAcknowledged && next.players.B.briefingAcknowledged;
       return bothIn ? { ...next, phase: "INVESTIGATION" } : next;
@@ -135,6 +221,24 @@ export function applyAction(
       if (!self.examined.includes(item.id)) throw invalidAction("Look at it yourself before passing it on.");
       if (self.shared.includes(item.id)) return state;
       return withPlayer({ shared: [...self.shared, item.id] });
+    }
+    case "SUBMIT_ANSWER": {
+      const puzzle = openPuzzle(action.puzzleId);
+      if (action.answer.length > ANSWER_MAX_LENGTH) {
+        throw invalidAction(`Answers hold up to ${ANSWER_MAX_LENGTH} characters.`);
+      }
+      const before = progressOf(state, puzzle.id);
+      // The answer itself is judged here and then dropped: it is never stored or sent on.
+      const solved = isAnswerCorrect(puzzle.check, action.answer);
+      const next = withPuzzle(puzzle.id, { attempts: before.attempts + 1, solved });
+      const allSolved = definition.puzzles.every((p) => progressOf(next, p.id).solved);
+      return allSolved ? { ...next, phase: "RESOLVED" } : next;
+    }
+    case "REVEAL_HINT": {
+      const puzzle = openPuzzle(action.puzzleId);
+      const revealed = progressOf(state, puzzle.id).hintsRevealed;
+      if (revealed >= puzzle.hints.length) throw invalidAction("There are no more hints for that one.");
+      return withPuzzle(puzzle.id, { hintsRevealed: revealed + 1 });
     }
   }
 }
@@ -172,6 +276,27 @@ export function projectFor(
       : [];
   });
 
+  const puzzles: PuzzleView[] = definition.puzzles.map((puzzle) => {
+    const progress = progressOf(state, puzzle.id);
+    const missing = outstanding(definition, state, puzzle);
+    const unlocked = missing.A.length === 0 && missing.B.length === 0;
+
+    return {
+      id: puzzle.id,
+      name: puzzle.name,
+      prompt: puzzle.prompt,
+      unlocked,
+      solved: progress.solved,
+      attempts: progress.attempts,
+      hints: puzzle.hints.slice(0, progress.hintsRevealed),
+      hintsRemaining: puzzle.hints.length - progress.hintsRevealed,
+      solvedNote: progress.solved ? (puzzle.solvedNote ?? null) : null,
+      // Your own outstanding items by name; your partner's only as a count,
+      // so a locked puzzle tells you to go and ask rather than what they hold.
+      blockedBy: unlocked ? null : { yours: missing[role], partnerItems: missing[partnerRole].length },
+    };
+  });
+
   return {
     phase: state.phase,
     you: { role, briefingAcknowledged: you.briefingAcknowledged, notebook: you.notebook },
@@ -181,5 +306,6 @@ export function projectFor(
       sharedCount: fromPartner.length,
     },
     evidence: { yours, fromPartner },
+    puzzles,
   };
 }

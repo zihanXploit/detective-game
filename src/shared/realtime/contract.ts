@@ -55,7 +55,7 @@ export interface RoomStateEnvelope {
   view: LobbyView;
 }
 
-export type GamePhaseView = "BRIEFING" | "INVESTIGATION";
+export type GamePhaseView = "BRIEFING" | "INVESTIGATION" | "RESOLVED";
 
 /** One of the player's own items. Content arrives only once they examine it. */
 export interface OwnEvidenceItemView {
@@ -74,12 +74,28 @@ export interface SharedEvidenceItemView {
   summary: string;
 }
 
+/** A puzzle as a player sees it. Nothing here is derived from the solution. */
+export interface PuzzleItemView {
+  id: string;
+  name: string;
+  prompt: string;
+  unlocked: boolean;
+  solved: boolean;
+  attempts: number;
+  hints: readonly string[];
+  hintsRemaining: number;
+  solvedNote: string | null;
+  /** Why it is still shut: your own missing items by name, your partner's as a count. */
+  blockedBy: { yours: readonly string[]; partnerItems: number } | null;
+}
+
 /** One player's view of the game. Built per player on the server; never broadcast to the room. */
 export interface PlayerGameView {
   phase: GamePhaseView;
   you: { role: PlayerRoleView; briefingAcknowledged: boolean; notebook: string };
   partner: { role: PlayerRoleView; briefingAcknowledged: boolean; sharedCount: number };
   evidence: { yours: OwnEvidenceItemView[]; fromPartner: SharedEvidenceItemView[] };
+  puzzles: PuzzleItemView[];
   caseFile: CaseFileView;
 }
 
@@ -92,7 +108,9 @@ export type GameActionPayload =
   | { type: "ACKNOWLEDGE_BRIEFING" }
   | { type: "UPDATE_NOTEBOOK"; text: string }
   | { type: "EXAMINE_EVIDENCE"; evidenceId: string }
-  | { type: "SHARE_EVIDENCE"; evidenceId: string };
+  | { type: "SHARE_EVIDENCE"; evidenceId: string }
+  | { type: "SUBMIT_ANSWER"; puzzleId: string; answer: string }
+  | { type: "REVEAL_HINT"; puzzleId: string };
 
 export type Result<T> =
   | { ok: true; data: T }

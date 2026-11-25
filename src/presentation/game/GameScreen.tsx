@@ -5,6 +5,7 @@ import type { RoomSocket } from "@/presentation/lobby/useLobby";
 import type { CaseFileView, PlayerGameView } from "@/shared/realtime/contract";
 import { EvidencePanel } from "./EvidencePanel";
 import { Notebook } from "./Notebook";
+import { PuzzlePanel } from "./PuzzlePanel";
 import { useGame } from "./useGame";
 
 function BriefingStatus({ view }: { view: PlayerGameView }) {
@@ -52,14 +53,14 @@ export function GameScreen({ socket, connected }: { socket: RoomSocket | null; c
   }
 
   const inBriefing = view.phase === "BRIEFING";
+  const resolved = view.phase === "RESOLVED";
   const { caseFile } = view;
+  const phaseLabel = inBriefing ? "Briefing" : resolved ? "Case closed" : "Investigation";
 
   return (
     <div className="space-y-5 rounded-lg border border-brass/40 bg-brass/5 p-5">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">
-          {inBriefing ? "Briefing" : "Investigation"}
-        </p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">{phaseLabel}</p>
         <h2 className="font-display text-xl text-brass">{caseFile.title}</h2>
         <p className="mt-1 text-sm text-muted">
           You are {caseFile.yourRole.name}. {caseFile.yourRole.summary}
@@ -67,7 +68,23 @@ export function GameScreen({ socket, connected }: { socket: RoomSocket | null; c
       </div>
 
       <ErrorNote message={error} />
+
+      {resolved && (
+        <p className="rounded-lg border border-signal/40 bg-signal/10 p-4 text-sm text-signal">
+          Every question is answered. You closed the case together.
+        </p>
+      )}
+
       <Briefing caseFile={caseFile} />
+
+      {!inBriefing && (
+        <PuzzlePanel
+          puzzles={view.puzzles}
+          partnerRoleName={caseFile.partnerRoleName}
+          disabled={!connected}
+          act={act}
+        />
+      )}
 
       {!inBriefing && (
         <EvidencePanel
