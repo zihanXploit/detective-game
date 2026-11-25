@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const lobbyJoinSchema = z.object({ code: z.string().max(16) });
+export const lobbySelectCaseSchema = z.object({ caseSlug: z.string().min(1).max(64) });
 export const lobbyChooseRoleSchema = z.object({ role: z.enum(["A", "B"]).nullable() });
 export const lobbySetReadySchema = z.object({ isReady: z.boolean() });
 export const noPayloadSchema = z.object({}).strict();

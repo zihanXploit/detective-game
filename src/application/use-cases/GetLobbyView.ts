@@ -41,6 +41,7 @@ export class GetLobbyView {
       code: room.code,
       status: room.status,
       capacity: ROOM_CAPACITY,
+      caseSlug: room.caseSlug,
       canStart: room.canStart,
       members: room.members.map((m) => ({
         playerId: m.playerId,

@@ -10,6 +10,7 @@ export type DomainErrorCode =
   | "ROOM_NOT_READY"
   | "ROLE_TAKEN"
   | "ROLE_REQUIRED"
+  | "CASE_NOT_FOUND"
   | "GAME_NOT_STARTED"
   | "INVALID_ACTION"
   | "STATE_CONFLICT"
@@ -55,10 +56,11 @@ export const notHost = () => new DomainError("NOT_HOST", "Only the host can do t
 export const roomLocked = () =>
   new DomainError("ROOM_LOCKED", "That can't be changed once the case has started.");
 export const roomNotReady = () =>
-  new DomainError("ROOM_NOT_READY", "Both detectives need a role and must be ready first.");
+  new DomainError("ROOM_NOT_READY", "Choose a case first; both detectives need a role and must be ready.");
 export const roleTaken = () =>
   new DomainError("ROLE_TAKEN", "Your partner already holds that role.");
 export const roleRequired = () => new DomainError("ROLE_REQUIRED", "Pick a role before readying up.");
+export const caseNotFound = () => new DomainError("CASE_NOT_FOUND", "That case is not available.");
 export const gameNotStarted = () =>
   new DomainError("GAME_NOT_STARTED", "The case has not been started yet.");
 export const invalidAction = (message: string) => new DomainError("INVALID_ACTION", message);

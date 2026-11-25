@@ -44,6 +44,8 @@ model Room {
   code      String     @unique @db.VarChar(6)
   status    RoomStatus @default(LOBBY)
   hostId    String     @db.Uuid
+  /// Slug of the case the host picked. Cases live in code, so this is not a foreign key.
+  caseSlug  String?    @db.VarChar(64)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 

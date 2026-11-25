@@ -1,3 +1,4 @@
+import type { CaseDefinition, CaseSummary } from "@/domain/case/CaseDefinition";
 import type { GameState } from "@/domain/game/GameState";
 import type { Player } from "@/domain/player/Player";
 import type { Room, RoomMember } from "@/domain/room/Room";
@@ -25,6 +26,14 @@ export interface RoomRepository {
   removeMember(room: Room, playerId: string): Promise<void>;
   /** Moves the room out of the lobby. Returns false if it had already left it. */
   markStarted(roomId: string): Promise<boolean>;
+  /** Persists the room's chosen case together with every member's readiness. */
+  saveCaseSelection(room: Room): Promise<void>;
+}
+
+/** The cases available to play. Synchronous: case content ships with the app. */
+export interface CaseCatalog {
+  list(): readonly CaseSummary[];
+  find(slug: string): CaseDefinition | null;
 }
 
 /** Which case a session is playing, and the version of its content the state was written against. */
@@ -35,6 +44,7 @@ export interface CaseRef {
 
 export interface StoredGameSession {
   id: string;
+  caseRef: CaseRef;
   state: GameState;
   /** Bumped on every save; pass it back to `save` to detect a concurrent writer. */
   version: number;

@@ -21,8 +21,27 @@ export interface LobbyView {
   code: string;
   status: RoomStatusView;
   capacity: number;
+  /** The case the host has chosen, if any. */
+  caseSlug: string | null;
   canStart: boolean;
   members: LobbyMemberView[];
+}
+
+/** What anyone may know about a case before playing it. Never includes briefing text. */
+export interface CaseSummaryView {
+  slug: string;
+  title: string;
+  synopsis: string;
+  estimatedMinutes: number;
+  roleNames: Record<PlayerRoleView, string>;
+  roleSummaries: Record<PlayerRoleView, string>;
+}
+
+/** One role's slice of the case being played. */
+export interface CaseFileView {
+  title: string;
+  yourRole: { name: string; summary: string; briefing: readonly string[] };
+  partnerRoleName: string;
 }
 
 /**
@@ -43,6 +62,7 @@ export interface PlayerGameView {
   phase: GamePhaseView;
   you: { role: PlayerRoleView; briefingAcknowledged: boolean; notebook: string };
   partner: { role: PlayerRoleView; briefingAcknowledged: boolean };
+  caseFile: CaseFileView;
 }
 
 export interface GameStateEnvelope {
@@ -65,6 +85,8 @@ type NoPayload = Record<string, never>;
 export interface ClientToServerEvents {
   /** Also the resync request: the ack always carries the latest snapshot. */
   "lobby:join": (payload: { code: string }, ack: Ack<RoomStateEnvelope>) => void;
+  /** Host only. */
+  "lobby:selectCase": (payload: { caseSlug: string }, ack: Ack<null>) => void;
   "lobby:chooseRole": (payload: { role: PlayerRoleView | null }, ack: Ack<null>) => void;
   "lobby:setReady": (payload: { isReady: boolean }, ack: Ack<null>) => void;
   "lobby:start": (payload: NoPayload, ack: Ack<null>) => void;

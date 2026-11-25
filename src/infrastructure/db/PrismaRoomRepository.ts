@@ -24,6 +24,7 @@ export class PrismaRoomRepository implements RoomRepository {
           code: room.code,
           status: room.status,
           hostId: room.hostId,
+          caseSlug: room.caseSlug,
           members: { create: room.members.map(memberData) },
         },
       });
@@ -42,6 +43,7 @@ export class PrismaRoomRepository implements RoomRepository {
       code: row.code as RoomCode,
       status: row.status,
       hostId: row.hostId,
+      caseSlug: row.caseSlug,
       members: row.members.map((m) => ({
         playerId: m.playerId,
         seat: m.seat as Seat,
@@ -85,6 +87,19 @@ export class PrismaRoomRepository implements RoomRepository {
     await this.prisma.$transaction([
       this.prisma.room.update({ where: { id: room.id }, data: { hostId: room.hostId } }),
       this.prisma.roomMember.deleteMany({ where: { roomId: room.id, playerId } }),
+    ]);
+  }
+
+  async saveCaseSelection(room: Room): Promise<void> {
+    // One transaction: the new case and the withdrawn readiness must never be visible separately.
+    await this.prisma.$transaction([
+      this.prisma.room.update({ where: { id: room.id }, data: { caseSlug: room.caseSlug } }),
+      ...room.members.map((m) =>
+        this.prisma.roomMember.updateMany({
+          where: { roomId: room.id, playerId: m.playerId },
+          data: { isReady: m.isReady },
+        }),
+      ),
     ]);
   }
 
