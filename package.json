@@ -11,6 +11,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:up": "docker compose up -d",
     "db:migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate"
   },

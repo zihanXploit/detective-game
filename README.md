@@ -56,6 +56,40 @@ It wipes whatever it is pointed at, so it refuses to run unless the database
 name contains `test` and differs from `DATABASE_URL`. Override the address with
 `TEST_DATABASE_URL`.
 
+## Deploying
+
+This needs a host that keeps a process alive. The game serves WebSockets, and
+presence, command ordering and per-connection rate limiting all live in the
+running process, so a serverless platform will not work. Any container host
+will: the `Dockerfile` builds a production image.
+
+Set these in the environment:
+
+| Variable | |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SESSION_SECRET` | 32+ random characters; changing it signs every player out |
+| `APP_ORIGIN` | the public origin, e.g. `https://example.com`. Required in production: it is what lets the server refuse cross-site socket connections |
+| `PORT`, `HOST` | default to `3000` and `0.0.0.0` in the image |
+
+Run migrations as a release step, before the new version starts serving:
+
+```bash
+npm run migrate:deploy
+```
+
+`GET /api/health` returns 200 when the process can reach its database and 503
+when it cannot. Point the host's health check at it.
+
+The server handles `SIGTERM`: it stops accepting connections, closes the open
+sockets and releases the database before exiting, so a deploy does not cut a
+game off mid-write.
+
+One thing to know before scaling past a single instance: presence, command
+ordering and rate limiting are per-process, so two instances would each see
+half the picture. Running more than one means moving those to Redis and adding
+sticky sessions first.
+
 ## Branches
 
 `main` is production, `develop` is integration, and features land on
